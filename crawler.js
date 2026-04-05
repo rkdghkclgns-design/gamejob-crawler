@@ -225,7 +225,7 @@ async function runCrawler({ targets = ['게임기획', '신입', '경력무관',
 
       if (needOpen && group.tabIdx >= 0) {
         console.log(`[INFO] 탭 열기: "${group.tabBtnText}" (idx: ${group.tabIdx})`);
-        await page.evaluate((tabText, tabIdx) => {
+        await page.evaluate(({ tabText, tabIdx }) => {
           const allBtns = document.querySelectorAll('.detailSearch .dev-tab dt button.btnTit');
           const matched = Array.from(allBtns).find(b => b.innerText.trim().includes(tabText));
           if (matched) { matched.click(); return; }
@@ -234,7 +234,7 @@ async function runCrawler({ targets = ['게임기획', '신입', '경력무관',
             const btn = tabs[tabIdx].querySelector('dt button.btnTit');
             if (btn) btn.click();
           }
-        }, group.tabBtnText, group.tabIdx);
+        }, { tabText: group.tabBtnText, tabIdx: group.tabIdx });
         await page.waitForTimeout(800);
       }
 
