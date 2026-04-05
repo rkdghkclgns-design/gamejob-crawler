@@ -141,7 +141,10 @@ async function runCrawler({ targets = ['게임기획', '신입', '경력무관',
   };
   process.on('SIGINT', onInterrupt);
 
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  });
   const context = await browser.newContext({
     userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
   });
@@ -162,7 +165,8 @@ async function runCrawler({ targets = ['게임기획', '신입', '경력무관',
     // 1단계: 상세 검색 & 필터 설정
     // ═══════════════════════════════════════════════
     console.log(`[INFO] 상세 검색 페이지 접속 및 필터 적용 중... (tags: [${targets.join(', ')}])`);
-    await page.goto('https://www.gamejob.co.kr/Recruit/joblist?menucode=searchdetail', { waitUntil: 'networkidle', timeout: 30000 });
+    await page.goto('https://www.gamejob.co.kr/Recruit/joblist?menucode=searchdetail', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => console.log('[WARN] networkidle 타임아웃 - 계속 진행'));
     await page.keyboard.press('Escape');
 
     // ── [v5.0] 탭-어웨어 체크박스 그룹핑 ──
@@ -648,7 +652,8 @@ async function runCrawler({ targets = ['게임기획', '신입', '경력무관',
       console.log(`[PROCESS] ${i + 1}/${allJobs.length}: ${job.company} - ${job.title} 수집 중...`);
 
       try {
-        await page.goto(job.link, { waitUntil: 'networkidle', timeout: 60000 });
+        await page.goto(job.link, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
         await page.waitForTimeout(300);
 
         // ────────────────────────────────────────
