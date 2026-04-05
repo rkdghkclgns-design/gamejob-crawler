@@ -165,7 +165,20 @@ async function runCrawler({ targets = ['게임기획', '신입', '경력무관',
     // 1단계: 상세 검색 & 필터 설정
     // ═══════════════════════════════════════════════
     console.log(`[INFO] 상세 검색 페이지 접속 및 필터 적용 중... (tags: [${targets.join(', ')}])`);
-    await page.goto('https://www.gamejob.co.kr/Recruit/joblist?menucode=searchdetail', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // CI 환경에서 해외 IP 접속 시 응답이 느릴 수 있으므로 재시도 로직 포함
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`[INFO] 페이지 접속 시도 ${attempt}/3...`);
+        await page.goto('https://www.gamejob.co.kr/Recruit/joblist?menucode=searchdetail', { waitUntil: 'commit', timeout: 120000 });
+        await page.waitForLoadState('domcontentloaded', { timeout: 60000 });
+        console.log('[INFO] 페이지 접속 성공');
+        break;
+      } catch (e) {
+        console.log(`[WARN] 접속 시도 ${attempt} 실패: ${e.message}`);
+        if (attempt === 3) throw e;
+        await page.waitForTimeout(5000);
+      }
+    }
     await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => console.log('[WARN] networkidle 타임아웃 - 계속 진행'));
     await page.keyboard.press('Escape');
 
@@ -652,7 +665,8 @@ async function runCrawler({ targets = ['게임기획', '신입', '경력무관',
       console.log(`[PROCESS] ${i + 1}/${allJobs.length}: ${job.company} - ${job.title} 수집 중...`);
 
       try {
-        await page.goto(job.link, { waitUntil: 'domcontentloaded', timeout: 60000 });
+        await page.goto(job.link, { waitUntil: 'commit', timeout: 120000 });
+        await page.waitForLoadState('domcontentloaded', { timeout: 60000 }).catch(() => {});
         await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
         await page.waitForTimeout(300);
 
