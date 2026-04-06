@@ -65,6 +65,11 @@
   .chart-box--tall canvas { max-height: 500px; }
   .kw-cloud { display: flex; flex-wrap: wrap; gap: 6px; max-height: 260px; overflow-y: auto; }
   .kw-tag { padding: 4px 10px; border-radius: 4px; font-weight: 600; background: #1f2937; border: 1px solid var(--border); }
+  .trend-section { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+  .trend-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .btn-trend { background: var(--accent); color: #fff; border-color: var(--accent); font-size: 12px; padding: 4px 12px; }
+  .btn-trend:hover { background: #4393e6; }
+  .btn-trend.active { background: #1a6fd4; border-color: #1a6fd4; }
 
   /* ─── AI Analysis ─── */
   .ai-section { background: var(--card); border: 1px solid var(--purple); border-radius: 8px; padding: 20px; margin-bottom: 24px; }
@@ -72,6 +77,11 @@
   .ai-result { font-size: 14px; line-height: 1.8; color: var(--text); white-space: pre-wrap; }
   .ai-result p { margin-bottom: 10px; }
   .ai-placeholder { color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+  .ai-toggle { cursor: pointer; user-select: none; }
+  .ai-toggle .arrow { display: inline-block; transition: transform .2s; font-size: 12px; }
+  .ai-toggle.collapsed .arrow { transform: rotate(-90deg); }
+  .ai-body { overflow: hidden; transition: max-height .3s ease; }
+  .ai-body.collapsed { max-height: 0 !important; }
 
   /* ─── Checkbox Dropdown ─── */
   .filter-group { position: relative; }
@@ -122,23 +132,24 @@
     <div class="meta" id="meta">데이터 로딩 중...</div>
   </div>
   <div class="header-right">
-    <button class="btn btn-primary" id="btnCrawl" onclick="triggerCrawl()">
+    <button class="btn btn-primary" id="btnCrawl" onclick="openCrawlModal()">
       <span class="spinner" id="crawlSpinner"></span>
       <span id="crawlText">수동 크롤링</span>
     </button>
-    <button class="btn btn-secondary" id="btnSettings" onclick="openSettings()" title="토큰 설정">&#9881;</button>
   </div>
 </div>
 
-<div class="modal-overlay" id="tokenModal">
+<!-- 비밀번호 + 토큰 모달 -->
+<div class="modal-overlay" id="crawlModal">
   <div class="modal">
-    <h3>GitHub 토큰 설정</h3>
-    <p>크롤링을 실행하려면 GitHub Personal Access Token이 필요합니다.<br><a href="https://github.com/settings/tokens/new?scopes=repo&description=GameJob+Crawler" target="_blank">여기서 토큰 생성</a> (repo 권한 체크)</p>
-    <input type="password" id="tokenInput" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+    <h3>수동 크롤링 인증</h3>
+    <p>크롤링을 실행하려면 비밀번호와 GitHub Token이 필요합니다.</p>
+    <input type="password" id="crawlPassword" placeholder="비밀번호 입력" style="margin-bottom:8px">
+    <input type="password" id="tokenInput" placeholder="GitHub Token (ghp_...)">
+    <p style="font-size:11px;margin-top:4px"><a href="https://github.com/settings/tokens/new?scopes=repo&description=GameJob+Crawler" target="_blank">토큰이 없다면 여기서 생성</a> (repo 권한)</p>
     <div class="modal-actions">
-      <button class="btn btn-danger" id="btnDeleteToken" onclick="deleteToken()" style="margin-right:auto;display:none;">토큰 삭제</button>
-      <button class="btn btn-secondary" onclick="closeModal()">취소</button>
-      <button class="btn btn-primary" onclick="saveToken()">저장</button>
+      <button class="btn btn-secondary" onclick="closeCrawlModal()">취소</button>
+      <button class="btn btn-primary" onclick="submitCrawl()">실행</button>
     </div>
   </div>
 </div>
@@ -197,14 +208,28 @@ function switchTab(id) {
   document.getElementById('tab-'+id).classList.add('active');
 }
 
-// ─── Toast / Token / Crawl ───
+// ─── Toast ───
 function showToast(msg,type){const el=document.createElement('div');el.className=`toast toast-${type}`;el.textContent=msg;document.body.appendChild(el);setTimeout(()=>el.remove(),4000);}
-function getToken(){return localStorage.getItem('gh_token');}
-function openSettings(){const m=document.getElementById('tokenModal'),i=document.getElementById('tokenInput'),d=document.getElementById('btnDeleteToken'),s=getToken();i.value=s||'';d.style.display=s?'inline-flex':'none';m.classList.add('active');}
-function closeModal(){document.getElementById('tokenModal').classList.remove('active');}
-function saveToken(){const v=document.getElementById('tokenInput').value.trim();if(!v){showToast('토큰을 입력하세요','error');return;}localStorage.setItem('gh_token',v);closeModal();showToast('토큰이 저장되었습니다','success');}
-function deleteToken(){localStorage.removeItem('gh_token');closeModal();showToast('토큰이 삭제되었습니다','info');}
-async function triggerCrawl(){const token=getToken();if(!token){openSettings();return;}const btn=document.getElementById('btnCrawl'),sp=document.getElementById('crawlSpinner'),tx=document.getElementById('crawlText');btn.disabled=true;sp.style.display='inline-block';tx.textContent='실행 중...';try{const r=await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`,{method:'POST',headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github+json'},body:JSON.stringify({ref:'master'})});if(r.status===204){showToast('크롤링이 시작되었습니다!','success');tx.textContent='크롤링 진행 중...';pollWorkflowStatus(token);}else{const b=await r.json().catch(()=>({}));showToast(`실행 실패: ${b.message||r.status}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}catch(e){showToast(`네트워크 오류: ${e.message}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}
+
+// ─── Crawl Modal (비밀번호 인증) ───
+const CRAWL_PASSWORD = '1124';
+function openCrawlModal() {
+  const m = document.getElementById('crawlModal');
+  document.getElementById('crawlPassword').value = '';
+  document.getElementById('tokenInput').value = localStorage.getItem('gh_token') || '';
+  m.classList.add('active');
+}
+function closeCrawlModal() { document.getElementById('crawlModal').classList.remove('active'); }
+function submitCrawl() {
+  const pw = document.getElementById('crawlPassword').value;
+  if (pw !== CRAWL_PASSWORD) { showToast('비밀번호가 올바르지 않습니다.', 'error'); return; }
+  const token = document.getElementById('tokenInput').value.trim();
+  if (!token) { showToast('GitHub Token을 입력하세요.', 'error'); return; }
+  localStorage.setItem('gh_token', token);
+  closeCrawlModal();
+  triggerCrawl(token);
+}
+async function triggerCrawl(token){const btn=document.getElementById('btnCrawl'),sp=document.getElementById('crawlSpinner'),tx=document.getElementById('crawlText');btn.disabled=true;sp.style.display='inline-block';tx.textContent='실행 중...';try{const r=await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`,{method:'POST',headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github+json'},body:JSON.stringify({ref:'master'})});if(r.status===204){showToast('크롤링이 시작되었습니다! (약 25분 소요)','success');tx.textContent='크롤링 진행 중...';pollWorkflowStatus(token);}else{const b=await r.json().catch(()=>({}));showToast(`실행 실패: ${b.message||r.status}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}catch(e){showToast(`네트워크 오류: ${e.message}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}
 async function pollWorkflowStatus(token){const btn=document.getElementById('btnCrawl'),sp=document.getElementById('crawlSpinner'),tx=document.getElementById('crawlText');for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,15000));try{const r=await fetch(`https://api.github.com/repos/${REPO}/actions/runs?per_page=1&status=completed`,{headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github+json'}});const d=await r.json();const l=d.workflow_runs?.[0];if(l){const a=(Date.now()-new Date(l.updated_at).getTime())/1000;if(a<60){const ok=l.conclusion==='success';showToast(ok?'크롤링 완료! 새로고침합니다.':'크롤링 완료 ('+l.conclusion+')',ok?'success':'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';if(ok)setTimeout(()=>location.reload(),2000);return;}}}catch{}}btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}
 
 // ─── Helpers ───
@@ -316,7 +341,6 @@ ${sorted(keywords,15).map(([k,v])=>`- ${k}: ${v}회`).join('\n')}
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) throw new Error('응답 파싱 실패');
 
-    // 마크다운 간이 변환
     box.innerHTML = '<div class="ai-result">' + text
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/^### (.+)$/gm, '<h4 style="color:var(--purple);margin:16px 0 6px">$1</h4>')
@@ -325,11 +349,96 @@ ${sorted(keywords,15).map(([k,v])=>`- ${k}: ${v}회`).join('\n')}
       .replace(/\n{2,}/g, '</p><p>')
       .replace(/\n/g, '<br>')
     + '</div>';
+    // 펼치기
+    const body = document.getElementById('aiBody');
+    body.classList.remove('collapsed');
+    body.style.maxHeight = body.scrollHeight + 'px';
+    document.querySelector('.ai-toggle').classList.remove('collapsed');
   } catch (err) {
     box.innerHTML = `<div class="ai-placeholder" style="color:var(--red)">AI 분석 실패: ${esc(err.message)}</div>`;
   } finally {
     btn.disabled = false;
     btn.innerHTML = '&#10024; AI 분석';
+  }
+}
+
+// ─── AI 접기/펼치기 ───
+function toggleAi() {
+  const t = document.querySelector('.ai-toggle');
+  const b = document.getElementById('aiBody');
+  if (b.classList.contains('collapsed')) {
+    b.classList.remove('collapsed');
+    b.style.maxHeight = b.scrollHeight + 'px';
+    t.classList.remove('collapsed');
+  } else {
+    b.style.maxHeight = '0';
+    b.classList.add('collapsed');
+    t.classList.add('collapsed');
+  }
+}
+
+// ─── 추이보기 ───
+async function loadTrend() {
+  const box = document.getElementById('trendContent');
+  const btn = document.getElementById('btnTrend');
+  btn.disabled = true; btn.textContent = '로딩 중...';
+  box.innerHTML = '<div class="ai-placeholder">히스토리 데이터를 로드하는 중...</div>';
+
+  try {
+    // 히스토리 인덱스 로드
+    const idxRes = await fetch('./data/history/index.txt');
+    if (!idxRes.ok) throw new Error('히스토리 데이터 없음');
+    const dates = (await idxRes.text()).trim().split('\n').filter(Boolean).sort();
+    if (dates.length < 1) throw new Error('히스토리 데이터가 아직 없습니다.');
+
+    // 각 날짜 데이터 로드 (최대 30일)
+    const recentDates = dates.slice(-30);
+    const historyData = [];
+    for (const date of recentDates) {
+      try {
+        const r = await fetch(`./data/history/${date}.json`);
+        if (r.ok) {
+          const jobs = await r.json();
+          if (Array.isArray(jobs)) {
+            const fields = {};
+            jobs.forEach(j => { if(j.jobField) j.jobField.split(/[,\/]/).forEach(f => { const k=f.trim(); if(k) fields[k]=(fields[k]||0)+1; }); });
+            historyData.push({ date, total: jobs.length, fields });
+          }
+        }
+      } catch {}
+    }
+
+    if (historyData.length < 1) throw new Error('로드된 히스토리 없음');
+
+    box.innerHTML = `<canvas id="chartTrend" style="max-height:350px"></canvas>`;
+
+    // 상위 5개 직군 추출
+    const allFieldCounts = {};
+    historyData.forEach(d => Object.entries(d.fields).forEach(([k,v]) => allFieldCounts[k] = (allFieldCounts[k]||0)+v));
+    const topFieldNames = sorted(allFieldCounts, 5).map(e => e[0]);
+
+    const datasets = [
+      { label: '전체 공고', data: historyData.map(d => d.total), borderColor: '#58a6ff', backgroundColor: '#58a6ff22', fill: true, tension: 0.3, borderWidth: 2 },
+      ...topFieldNames.map((name, i) => ({
+        label: name, data: historyData.map(d => d.fields[name] || 0),
+        borderColor: COLORS[i+1], backgroundColor: 'transparent', tension: 0.3, borderWidth: 1.5, borderDash: [4,2],
+      }))
+    ];
+
+    if (charts.trend) charts.trend.destroy();
+    charts.trend = new Chart(document.getElementById('chartTrend'), {
+      type: 'line',
+      data: { labels: historyData.map(d => d.date), datasets },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } },
+        scales: { x: { grid: { color: '#21262d' } }, y: { grid: { color: '#21262d' }, beginAtZero: true } },
+      }
+    });
+  } catch (err) {
+    box.innerHTML = `<div class="ai-placeholder">${esc(err.message)}<br><span style="font-size:11px;color:var(--muted)">크롤링이 2회 이상 실행된 후 추이를 볼 수 있습니다.</span></div>`;
+  } finally {
+    btn.disabled = false; btn.textContent = '추이보기';
   }
 }
 
@@ -362,14 +471,24 @@ function renderDashboard() {
       <div class="stat-card"><div class="num">${topExps[0]?topExps[0][0]:'-'}</div><div class="label">최다 경력</div></div>
     </div>
 
-    <!-- AI 분석 영역 -->
+    <!-- AI 분석 (접기/펼치기) -->
     <div class="ai-section">
-      <h3>&#10024; AI 시장 분석</h3>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <span style="font-size:12px;color:var(--muted)">Gemini AI가 현재 공고 분포를 분석하여 시장 소견을 제공합니다.</span>
-        <button class="btn btn-ai" id="btnAi" onclick="runAiAnalysis()">&#10024; AI 분석</button>
+      <h3 class="ai-toggle" onclick="toggleAi()"><span class="arrow">&#9660;</span> &#10024; AI 시장 분석</h3>
+      <div id="aiBody" class="ai-body" style="max-height:500px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:12px;color:var(--muted)">Gemini AI가 현재 공고 분포를 분석하여 시장 소견을 제공합니다.</span>
+          <button class="btn btn-ai" id="btnAi" onclick="runAiAnalysis()">&#10024; AI 분석</button>
+        </div>
+        <div id="aiResult"><div class="ai-placeholder">버튼을 눌러 AI 분석을 시작하세요.</div></div>
       </div>
-      <div id="aiResult"><div class="ai-placeholder">버튼을 눌러 AI 분석을 시작하세요.</div></div>
+    </div>
+
+    <!-- 추이보기 -->
+    <div class="trend-section">
+      <h3>&#128200; 공고 추이
+        <button class="btn btn-trend" id="btnTrend" onclick="loadTrend()">추이보기</button>
+      </h3>
+      <div id="trendContent"><div class="ai-placeholder">추이보기 버튼을 눌러 날짜별 변화를 확인하세요.</div></div>
     </div>
 
     <div class="chart-row">

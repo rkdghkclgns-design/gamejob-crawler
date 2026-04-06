@@ -12,7 +12,7 @@ on:
         default: ''
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -43,7 +43,31 @@ jobs:
       - name: Run crawler
         run: node crawler.js ${{ github.event.inputs.tags || '' }}
 
-      - name: Upload crawled data
+      - name: Save daily snapshot
+        if: always()
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          mkdir -p data/history
+          if [ -f data/jobs/all-jobs.json ]; then
+            cp data/jobs/all-jobs.json "data/history/${TODAY}.json"
+            echo "[INFO] Saved daily snapshot: data/history/${TODAY}.json"
+          fi
+
+      - name: Commit crawled data
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --cached --quiet; then
+            echo "No data changes to commit"
+          else
+            TODAY=$(date -u +%Y-%m-%d)
+            git commit -m "data: ${TODAY} 크롤링 데이터 업데이트"
+            git push
+          fi
+
+      - name: Upload crawled data artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -54,12 +78,18 @@ jobs:
       - name: Prepare Pages site
         if: always()
         run: |
-          mkdir -p _site
+          mkdir -p _site/data/history
           cp index.html _site/
           if [ -f data/jobs/all-jobs.json ]; then
             cp data/jobs/all-jobs.json _site/
           else
             echo "[]" > _site/all-jobs.json
+          fi
+          # 히스토리 데이터 복사
+          if ls data/history/*.json 1>/dev/null 2>&1; then
+            cp data/history/*.json _site/data/history/
+            # 히스토리 인덱스 생성
+            ls -1 data/history/*.json | xargs -I{} basename {} .json | sort > _site/data/history/index.txt
           fi
 
       - name: Upload Pages artifact
