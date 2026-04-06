@@ -60,7 +60,8 @@
   .chart-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 16px; margin-bottom: 24px; }
   .chart-box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
   .chart-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
-  .chart-box canvas { max-height: 300px; }
+  .chart-box canvas { max-height: 360px; }
+  .chart-box--tall canvas { max-height: 500px; }
   .kw-cloud { display: flex; flex-wrap: wrap; gap: 6px; max-height: 260px; overflow-y: auto; }
   .kw-tag { padding: 4px 10px; border-radius: 4px; font-weight: 600; background: #1f2937; border: 1px solid var(--border); }
 
@@ -217,8 +218,8 @@ function renderDashboard() {
       <div class="chart-box"><h3>게임 장르 분포</h3><canvas id="chartCategory"></canvas></div>
     </div>
     <div class="chart-row">
-      <div class="chart-box"><h3>채용 기업 Top 15</h3><canvas id="chartCompany"></canvas></div>
-      <div class="chart-box"><h3>키워드 인기 순위 Top 30</h3><div class="kw-cloud" id="kwCloud"></div></div>
+      <div class="chart-box chart-box--tall"><h3>채용 기업 Top 15</h3><canvas id="chartCompany"></canvas></div>
+      <div class="chart-box chart-box--tall"><h3>키워드 인기 순위 Top 30</h3><div class="kw-cloud" id="kwCloud"></div></div>
     </div>
   `;
 
