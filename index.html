@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GameJob Crawler - 채용공고 현황</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
   :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --yellow: #d29922; --red: #f85149; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -42,6 +43,27 @@
   .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
   .modal a { color: var(--accent); }
 
+  /* ─── Tabs ─── */
+  .tab-bar { display: flex; gap: 0; padding: 0 32px; border-bottom: 1px solid var(--border); background: var(--card); }
+  .tab-btn { padding: 12px 20px; font-size: 14px; font-weight: 600; color: var(--muted); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; transition: all .2s; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ─── Dashboard ─── */
+  .dash { padding: 24px 32px; }
+  .stat-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
+  .stat-card .num { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat-card .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .chart-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .chart-box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
+  .chart-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+  .chart-box canvas { max-height: 300px; }
+  .kw-cloud { display: flex; flex-wrap: wrap; gap: 6px; max-height: 260px; overflow-y: auto; }
+  .kw-tag { padding: 4px 10px; border-radius: 4px; font-weight: 600; background: #1f2937; border: 1px solid var(--border); }
+
   .controls { display: flex; gap: 12px; padding: 16px 32px; flex-wrap: wrap; align-items: center; }
   .controls input, .controls select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 14px; }
   .controls input { flex: 1; min-width: 200px; }
@@ -49,7 +71,6 @@
   .badge { background: var(--accent); color: #fff; padding: 4px 10px; border-radius: 12px; font-size: 13px; font-weight: 600; }
 
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; padding: 0 32px 32px; }
-
   .card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; transition: border-color .2s; cursor: pointer; text-decoration: none; color: inherit; display: block; }
   .card:hover { border-color: var(--accent); }
   .card-title { font-size: 15px; font-weight: 600; line-height: 1.4; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -61,15 +82,17 @@
   .tag.field { border-color: var(--accent); color: var(--accent); }
   .card-bottom { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--muted); margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px; }
   .deadline { color: var(--red); font-weight: 600; }
-
   .empty { text-align: center; padding: 80px 32px; color: var(--muted); }
   .empty h2 { font-size: 18px; margin-bottom: 8px; }
   .loading { text-align: center; padding: 80px; color: var(--muted); }
 
-  @media (max-width: 600px) {
+  @media (max-width: 700px) {
     .header { flex-direction: column; gap: 12px; padding: 16px; }
     .controls { padding: 12px 16px; }
     .grid { grid-template-columns: 1fr; padding: 0 16px 16px; }
+    .dash { padding: 16px; }
+    .chart-row { grid-template-columns: 1fr; }
+    .stat-row { grid-template-columns: repeat(2, 1fr); }
   }
 </style>
 </head>
@@ -93,10 +116,7 @@
 <div class="modal-overlay" id="tokenModal">
   <div class="modal">
     <h3>GitHub 토큰 설정</h3>
-    <p>
-      크롤링을 실행하려면 GitHub Personal Access Token이 필요합니다.<br>
-      <a href="https://github.com/settings/tokens/new?scopes=repo&description=GameJob+Crawler" target="_blank">여기서 토큰 생성</a> (repo 권한 체크)
-    </p>
+    <p>크롤링을 실행하려면 GitHub Personal Access Token이 필요합니다.<br><a href="https://github.com/settings/tokens/new?scopes=repo&description=GameJob+Crawler" target="_blank">여기서 토큰 생성</a> (repo 권한 체크)</p>
     <input type="password" id="tokenInput" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
     <div class="modal-actions">
       <button class="btn btn-danger" id="btnDeleteToken" onclick="deleteToken()" style="margin-right:auto;display:none;">토큰 삭제</button>
@@ -106,217 +126,161 @@
   </div>
 </div>
 
-<div class="controls">
-  <input type="text" id="search" placeholder="공고 제목, 회사명, 키워드 검색...">
-  <select id="filterField">
-    <option value="">전체 직군</option>
-  </select>
-  <select id="filterExp">
-    <option value="">전체 경력</option>
-  </select>
-  <span class="badge" id="count">-</span>
+<!-- ─── Tab Bar ─── -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('dashboard')">대시보드</button>
+  <button class="tab-btn" onclick="switchTab('list')">공고 목록</button>
 </div>
 
-<div id="content" class="loading">로딩 중...</div>
+<!-- ─── TAB 1: 대시보드 ─── -->
+<div id="tab-dashboard" class="tab-panel active">
+  <div class="dash" id="dashContent"><div class="loading">데이터 분석 중...</div></div>
+</div>
+
+<!-- ─── TAB 2: 공고 목록 ─── -->
+<div id="tab-list" class="tab-panel">
+  <div class="controls">
+    <input type="text" id="search" placeholder="공고 제목, 회사명, 키워드 검색...">
+    <select id="filterField"><option value="">전체 직군</option></select>
+    <select id="filterExp"><option value="">전체 경력</option></select>
+    <span class="badge" id="count">-</span>
+  </div>
+  <div id="content" class="loading">로딩 중...</div>
+</div>
 
 <script>
 const REPO = 'rkdghkclgns-design/gamejob-crawler';
 const WORKFLOW = 'crawl.yml';
+const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#f778ba','#79c0ff','#56d4dd','#db6d28','#7ee787','#e3b341','#ff7b72'];
 let allJobs = [];
+let charts = {};
 
-// ─── Toast ───
-function showToast(msg, type) {
-  const el = document.createElement('div');
-  el.className = `toast toast-${type}`;
-  el.textContent = msg;
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+// ─── Tab ───
+function switchTab(id) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (id==='dashboard'?0:1)===i));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
 }
 
-// ─── Token ───
+// ─── Toast / Token / Crawl (unchanged) ───
+function showToast(msg, type) { const el=document.createElement('div'); el.className=`toast toast-${type}`; el.textContent=msg; document.body.appendChild(el); setTimeout(()=>el.remove(),4000); }
 function getToken() { return localStorage.getItem('gh_token'); }
-
-function openSettings() {
-  const modal = document.getElementById('tokenModal');
-  const input = document.getElementById('tokenInput');
-  const delBtn = document.getElementById('btnDeleteToken');
-  const saved = getToken();
-  input.value = saved || '';
-  delBtn.style.display = saved ? 'inline-flex' : 'none';
-  modal.classList.add('active');
-}
-
+function openSettings() { const m=document.getElementById('tokenModal'),i=document.getElementById('tokenInput'),d=document.getElementById('btnDeleteToken'),s=getToken(); i.value=s||''; d.style.display=s?'inline-flex':'none'; m.classList.add('active'); }
 function closeModal() { document.getElementById('tokenModal').classList.remove('active'); }
+function saveToken() { const v=document.getElementById('tokenInput').value.trim(); if(!v){showToast('토큰을 입력하세요','error');return;} localStorage.setItem('gh_token',v); closeModal(); showToast('토큰이 저장되었습니다','success'); }
+function deleteToken() { localStorage.removeItem('gh_token'); closeModal(); showToast('토큰이 삭제되었습니다','info'); }
+async function triggerCrawl(){const token=getToken();if(!token){openSettings();return;}const btn=document.getElementById('btnCrawl'),sp=document.getElementById('crawlSpinner'),tx=document.getElementById('crawlText');btn.disabled=true;sp.style.display='inline-block';tx.textContent='실행 중...';try{const r=await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`,{method:'POST',headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github+json'},body:JSON.stringify({ref:'master'})});if(r.status===204){showToast('크롤링이 시작되었습니다!','success');tx.textContent='크롤링 진행 중...';pollWorkflowStatus(token);}else{const b=await r.json().catch(()=>({}));showToast(`실행 실패: ${b.message||r.status}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}catch(e){showToast(`네트워크 오류: ${e.message}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}
+async function pollWorkflowStatus(token){const btn=document.getElementById('btnCrawl'),sp=document.getElementById('crawlSpinner'),tx=document.getElementById('crawlText');for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,15000));try{const r=await fetch(`https://api.github.com/repos/${REPO}/actions/runs?per_page=1&status=completed`,{headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github+json'}});const d=await r.json();const l=d.workflow_runs?.[0];if(l){const a=(Date.now()-new Date(l.updated_at).getTime())/1000;if(a<60){const ok=l.conclusion==='success';showToast(ok?'크롤링 완료! 새로고침합니다.':'크롤링 완료 ('+l.conclusion+')',ok?'success':'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';if(ok)setTimeout(()=>location.reload(),2000);return;}}}catch{}}btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}
 
-function saveToken() {
-  const val = document.getElementById('tokenInput').value.trim();
-  if (!val) { showToast('토큰을 입력하세요', 'error'); return; }
-  localStorage.setItem('gh_token', val);
-  closeModal();
-  showToast('토큰이 저장되었습니다', 'success');
+// ─── Helpers ───
+function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
+function countMap(arr){const m={};arr.forEach(v=>{if(v)m[v]=(m[v]||0)+1});return m;}
+function sorted(map,limit){return Object.entries(map).sort((a,b)=>b[1]-a[1]).slice(0,limit||999);}
+
+// ─── Dashboard ───
+function renderDashboard() {
+  if(!allJobs.length){document.getElementById('dashContent').innerHTML='<div class="empty"><h2>데이터 없음</h2></div>';return;}
+
+  // ── 데이터 집계 ──
+  const companies = countMap(allJobs.map(j=>j.company));
+  const fields = {};
+  allJobs.forEach(j=>{if(j.jobField)j.jobField.split(/[,/]/).forEach(f=>{const k=f.trim();if(k)fields[k]=(fields[k]||0)+1;});});
+  const exps = countMap(allJobs.map(j=>j.experience));
+  const types = countMap(allJobs.map(j=>j.employmentType));
+  const categories = countMap(allJobs.map(j=>j.gameCategory).filter(Boolean));
+  const keywords = {};
+  allJobs.forEach(j=>{if(j.keywords)j.keywords.split(',').forEach(k=>{const t=k.trim();if(t&&t.length>1)keywords[t]=(keywords[t]||0)+1;});});
+
+  const topCompanies = sorted(companies, 15);
+  const topFields = sorted(fields, 10);
+  const topExps = sorted(exps);
+  const topTypes = sorted(types);
+  const topCategories = sorted(categories, 10);
+  const topKeywords = sorted(keywords, 30);
+  const uniqueCompanies = Object.keys(companies).length;
+
+  // ── HTML ──
+  document.getElementById('dashContent').innerHTML = `
+    <div class="stat-row">
+      <div class="stat-card"><div class="num">${allJobs.length}</div><div class="label">총 공고 수</div></div>
+      <div class="stat-card"><div class="num">${uniqueCompanies}</div><div class="label">기업 수</div></div>
+      <div class="stat-card"><div class="num">${topFields[0]?topFields[0][0]:'-'}</div><div class="label">최다 직군</div></div>
+      <div class="stat-card"><div class="num">${topExps[0]?topExps[0][0]:'-'}</div><div class="label">최다 경력</div></div>
+    </div>
+
+    <div class="chart-row">
+      <div class="chart-box"><h3>직군별 공고 분포</h3><canvas id="chartFields"></canvas></div>
+      <div class="chart-box"><h3>경력별 분포</h3><canvas id="chartExp"></canvas></div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-box"><h3>고용형태 분포</h3><canvas id="chartType"></canvas></div>
+      <div class="chart-box"><h3>게임 장르 분포</h3><canvas id="chartCategory"></canvas></div>
+    </div>
+    <div class="chart-row">
+      <div class="chart-box"><h3>채용 기업 Top 15</h3><canvas id="chartCompany"></canvas></div>
+      <div class="chart-box"><h3>키워드 인기 순위 Top 30</h3><div class="kw-cloud" id="kwCloud"></div></div>
+    </div>
+  `;
+
+  // ── Charts ──
+  Chart.defaults.color = '#8b949e';
+  Chart.defaults.borderColor = '#30363d';
+
+  // 직군별 (Horizontal Bar)
+  charts.fields = new Chart(document.getElementById('chartFields'), {
+    type: 'bar',
+    data: { labels: topFields.map(e=>e[0]), datasets: [{ data: topFields.map(e=>e[1]), backgroundColor: COLORS.slice(0, topFields.length), borderRadius: 4 }] },
+    options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#21262d'}},y:{grid:{display:false}}} }
+  });
+
+  // 경력별 (Doughnut)
+  charts.exp = new Chart(document.getElementById('chartExp'), {
+    type: 'doughnut',
+    data: { labels: topExps.map(e=>e[0]), datasets: [{ data: topExps.map(e=>e[1]), backgroundColor: COLORS, borderWidth: 0 }] },
+    options: { responsive:true, plugins:{legend:{position:'right',labels:{boxWidth:12,padding:8,font:{size:11}}}} }
+  });
+
+  // 고용형태 (Doughnut)
+  charts.type = new Chart(document.getElementById('chartType'), {
+    type: 'doughnut',
+    data: { labels: topTypes.map(e=>e[0]||'미기재'), datasets: [{ data: topTypes.map(e=>e[1]), backgroundColor: COLORS.slice(2), borderWidth: 0 }] },
+    options: { responsive:true, plugins:{legend:{position:'right',labels:{boxWidth:12,padding:8,font:{size:11}}}} }
+  });
+
+  // 게임 장르 (Bar)
+  charts.category = new Chart(document.getElementById('chartCategory'), {
+    type: 'bar',
+    data: { labels: topCategories.map(e=>e[0]), datasets: [{ data: topCategories.map(e=>e[1]), backgroundColor: COLORS.slice(4), borderRadius: 4 }] },
+    options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#21262d'}},y:{grid:{display:false}}} }
+  });
+
+  // 기업 Top 15 (Bar)
+  charts.company = new Chart(document.getElementById('chartCompany'), {
+    type: 'bar',
+    data: { labels: topCompanies.map(e=>e[0]), datasets: [{ data: topCompanies.map(e=>e[1]), backgroundColor: '#58a6ff', borderRadius: 4 }] },
+    options: { indexAxis:'y', responsive:true, plugins:{legend:{display:false}}, scales:{x:{grid:{color:'#21262d'}},y:{grid:{display:false},ticks:{font:{size:11}}}} }
+  });
+
+  // 키워드 클라우드
+  const maxKw = topKeywords[0]?.[1] || 1;
+  document.getElementById('kwCloud').innerHTML = topKeywords.map(([k,v]) => {
+    const size = Math.max(11, Math.round(11 + (v/maxKw)*14));
+    const ci = Math.floor((v/maxKw)*11);
+    return `<span class="kw-tag" style="font-size:${size}px;color:${COLORS[ci]};border-color:${COLORS[ci]}33">${esc(k)} <small style="opacity:.6">${v}</small></span>`;
+  }).join('');
 }
 
-function deleteToken() {
-  localStorage.removeItem('gh_token');
-  closeModal();
-  showToast('토큰이 삭제되었습니다', 'info');
-}
+// ─── List (공고 목록) ───
+function populateFilters(){const fields=new Set(),exps=new Set();allJobs.forEach(j=>{if(j.jobField)j.jobField.split(/[,/]/).forEach(f=>fields.add(f.trim()));if(j.experience)exps.add(j.experience.trim());});const fs=document.getElementById('filterField');[...fields].sort().forEach(f=>{if(f)fs.innerHTML+=`<option value="${f}">${f}</option>`;});const es=document.getElementById('filterExp');[...exps].sort().forEach(e=>{if(e)es.innerHTML+=`<option value="${e}">${e}</option>`;});}
 
-// ─── Trigger Crawl ───
-async function triggerCrawl() {
-  const token = getToken();
-  if (!token) { openSettings(); return; }
-
-  const btn = document.getElementById('btnCrawl');
-  const spinner = document.getElementById('crawlSpinner');
-  const text = document.getElementById('crawlText');
-
-  btn.disabled = true;
-  spinner.style.display = 'inline-block';
-  text.textContent = '실행 중...';
-
-  try {
-    const res = await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
-      body: JSON.stringify({ ref: 'master' }),
-    });
-
-    if (res.status === 204) {
-      showToast('크롤링이 시작되었습니다! 완료까지 약 5~60분 소요됩니다.', 'success');
-      text.textContent = '크롤링 진행 중...';
-      pollWorkflowStatus(token);
-    } else if (res.status === 401) {
-      showToast('토큰이 유효하지 않습니다. 설정에서 갱신하세요.', 'error');
-      btn.disabled = false; spinner.style.display = 'none'; text.textContent = '수동 크롤링';
-    } else {
-      const body = await res.json().catch(() => ({}));
-      showToast(`실행 실패: ${body.message || res.status}`, 'error');
-      btn.disabled = false; spinner.style.display = 'none'; text.textContent = '수동 크롤링';
-    }
-  } catch (e) {
-    showToast(`네트워크 오류: ${e.message}`, 'error');
-    btn.disabled = false; spinner.style.display = 'none'; text.textContent = '수동 크롤링';
-  }
-}
-
-// ─── Poll Status ───
-async function pollWorkflowStatus(token) {
-  const btn = document.getElementById('btnCrawl');
-  const spinner = document.getElementById('crawlSpinner');
-  const text = document.getElementById('crawlText');
-
-  for (let i = 0; i < 120; i++) {
-    await new Promise(r => setTimeout(r, 15000));
-    try {
-      const res = await fetch(`https://api.github.com/repos/${REPO}/actions/runs?per_page=1&status=completed`, {
-        headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/vnd.github+json' },
-      });
-      const data = await res.json();
-      const latest = data.workflow_runs?.[0];
-      if (latest) {
-        const age = (Date.now() - new Date(latest.updated_at).getTime()) / 1000;
-        if (age < 60) {
-          const ok = latest.conclusion === 'success';
-          showToast(ok ? '크롤링 완료! 페이지를 새로고침합니다.' : `크롤링 완료 (${latest.conclusion})`, ok ? 'success' : 'error');
-          btn.disabled = false; spinner.style.display = 'none'; text.textContent = '수동 크롤링';
-          if (ok) setTimeout(() => location.reload(), 2000);
-          return;
-        }
-      }
-    } catch { /* ignore poll errors */ }
-  }
-  btn.disabled = false; spinner.style.display = 'none'; text.textContent = '수동 크롤링';
-}
+function render(){const q=document.getElementById('search').value.toLowerCase(),ff=document.getElementById('filterField').value,fe=document.getElementById('filterExp').value;const filtered=allJobs.filter(j=>{if(q){const h=`${j.title} ${j.company} ${j.keywords} ${j.jobField} ${j.description}`.toLowerCase();if(!h.includes(q))return false;}if(ff&&(!j.jobField||!j.jobField.includes(ff)))return false;if(fe&&j.experience!==fe)return false;return true;});document.getElementById('count').textContent=`${filtered.length}건`;if(!filtered.length){document.getElementById('content').innerHTML='<div class="empty"><h2>검색 결과 없음</h2><p>조건을 변경해보세요.</p></div>';return;}document.getElementById('content').innerHTML='<div class="grid">'+filtered.map(j=>`<a class="card" href="${j.link||'#'}" target="_blank" rel="noopener"><div class="card-title">${esc(j.title)}</div><div class="card-company">${esc(j.company)}</div><div class="card-tags">${j.jobField?`<span class="tag field">${esc(j.jobField)}</span>`:''}${j.experience?`<span class="tag exp">${esc(j.experience)}</span>`:''}${j.employmentType?`<span class="tag type">${esc(j.employmentType)}</span>`:''}</div>${j.keywords?`<div class="card-tags">${j.keywords.split(',').slice(0,5).map(k=>`<span class="tag">${esc(k.trim())}</span>`).join('')}</div>`:''}<div class="card-bottom"><span>${esc(j.updatedAt||'')}</span><span class="deadline">${esc(j.deadline||'')}</span></div></a>`).join('')+'</div>';}
 
 // ─── Data Load ───
-async function loadData() {
-  try {
-    const res = await fetch('./all-jobs.json');
-    if (!res.ok) throw new Error(res.status);
-    allJobs = await res.json();
-    if (!Array.isArray(allJobs)) allJobs = [];
-
-    document.getElementById('meta').textContent =
-      `총 ${allJobs.length}건 | 마지막 업데이트: ${allJobs[0]?.updatedAt || '-'}`;
-
-    populateFilters();
-    render();
-  } catch (e) {
-    document.getElementById('content').innerHTML =
-      '<div class="empty"><h2>데이터 없음</h2><p>아직 크롤링이 실행되지 않았거나 데이터가 없습니다.<br>상단의 <b>수동 크롤링</b> 버튼을 눌러 시작하세요.</p></div>';
-    document.getElementById('meta').textContent = '데이터를 불러올 수 없습니다';
-  }
-}
-
-function populateFilters() {
-  const fields = new Set();
-  const exps = new Set();
-  allJobs.forEach(j => {
-    if (j.jobField) j.jobField.split(/[,/]/).forEach(f => fields.add(f.trim()));
-    if (j.experience) exps.add(j.experience.trim());
-  });
-
-  const fieldSel = document.getElementById('filterField');
-  [...fields].sort().forEach(f => {
-    if (f) fieldSel.innerHTML += `<option value="${f}">${f}</option>`;
-  });
-
-  const expSel = document.getElementById('filterExp');
-  [...exps].sort().forEach(e => {
-    if (e) expSel.innerHTML += `<option value="${e}">${e}</option>`;
-  });
-}
-
-function render() {
-  const q = document.getElementById('search').value.toLowerCase();
-  const ff = document.getElementById('filterField').value;
-  const fe = document.getElementById('filterExp').value;
-
-  const filtered = allJobs.filter(j => {
-    if (q) {
-      const haystack = `${j.title} ${j.company} ${j.keywords} ${j.jobField} ${j.description}`.toLowerCase();
-      if (!haystack.includes(q)) return false;
-    }
-    if (ff && (!j.jobField || !j.jobField.includes(ff))) return false;
-    if (fe && j.experience !== fe) return false;
-    return true;
-  });
-
-  document.getElementById('count').textContent = `${filtered.length}건`;
-
-  if (filtered.length === 0) {
-    document.getElementById('content').innerHTML =
-      '<div class="empty"><h2>검색 결과 없음</h2><p>조건을 변경해보세요.</p></div>';
-    return;
-  }
-
-  const html = '<div class="grid">' + filtered.map(j => `
-    <a class="card" href="${j.link || '#'}" target="_blank" rel="noopener">
-      <div class="card-title">${esc(j.title)}</div>
-      <div class="card-company">${esc(j.company)}</div>
-      <div class="card-tags">
-        ${j.jobField ? `<span class="tag field">${esc(j.jobField)}</span>` : ''}
-        ${j.experience ? `<span class="tag exp">${esc(j.experience)}</span>` : ''}
-        ${j.employmentType ? `<span class="tag type">${esc(j.employmentType)}</span>` : ''}
-      </div>
-      ${j.keywords ? `<div class="card-tags">${j.keywords.split(',').slice(0,5).map(k => `<span class="tag">${esc(k.trim())}</span>`).join('')}</div>` : ''}
-      <div class="card-bottom">
-        <span>${esc(j.updatedAt || '')}</span>
-        <span class="deadline">${esc(j.deadline || '')}</span>
-      </div>
-    </a>
-  `).join('') + '</div>';
-
-  document.getElementById('content').innerHTML = html;
-}
-
-function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+async function loadData(){try{const r=await fetch('./all-jobs.json');if(!r.ok)throw new Error(r.status);allJobs=await r.json();if(!Array.isArray(allJobs))allJobs=[];document.getElementById('meta').textContent=`총 ${allJobs.length}건 | 마지막 업데이트: ${allJobs[0]?.updatedAt||'-'}`;populateFilters();render();renderDashboard();}catch(e){document.getElementById('content').innerHTML='<div class="empty"><h2>데이터 없음</h2><p>아직 크롤링이 실행되지 않았거나 데이터가 없습니다.<br>상단의 <b>수동 크롤링</b> 버튼을 눌러 시작하세요.</p></div>';document.getElementById('dashContent').innerHTML='<div class="empty"><h2>데이터 없음</h2></div>';document.getElementById('meta').textContent='데이터를 불러올 수 없습니다';}}
 
 document.getElementById('search').addEventListener('input', render);
 document.getElementById('filterField').addEventListener('change', render);
 document.getElementById('filterExp').addEventListener('change', render);
-
 loadData();
 </script>
 </body>
