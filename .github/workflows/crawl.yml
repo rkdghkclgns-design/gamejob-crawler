@@ -11,6 +11,15 @@ on:
         required: false
         default: ''
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   crawl:
     runs-on: ubuntu-latest
@@ -41,3 +50,37 @@ jobs:
           name: gamejob-data-${{ github.run_number }}
           path: data/
           retention-days: 30
+
+      - name: Prepare Pages site
+        if: always()
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          if [ -f data/jobs/all-jobs.json ]; then
+            cp data/jobs/all-jobs.json _site/
+          else
+            echo "[]" > _site/all-jobs.json
+          fi
+
+      - name: Upload Pages artifact
+        if: always()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site/
+
+  deploy:
+    needs: crawl
+    if: always()
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    permissions:
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
