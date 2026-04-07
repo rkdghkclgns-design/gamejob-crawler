@@ -144,10 +144,8 @@
 <div class="modal-overlay" id="crawlModal">
   <div class="modal">
     <h3>수동 크롤링 인증</h3>
-    <p>크롤링을 실행하려면 비밀번호와 GitHub Token이 필요합니다.</p>
-    <input type="password" id="crawlPassword" placeholder="비밀번호 입력" style="margin-bottom:8px">
-    <input type="password" id="tokenInput" placeholder="GitHub Token (ghp_...)" value="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">
-    <p style="font-size:11px;margin-top:4px"><a href="https://github.com/settings/tokens/new?scopes=repo&description=GameJob+Crawler" target="_blank">토큰이 없다면 여기서 생성</a> (repo 권한)</p>
+    <p>크롤링을 실행하려면 비밀번호를 입력하세요.</p>
+    <input type="password" id="crawlPassword" placeholder="비밀번호 입력">
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeCrawlModal()">취소</button>
       <button class="btn btn-primary" onclick="submitCrawl()">실행</button>
@@ -214,26 +212,21 @@ function showToast(msg,type){const el=document.createElement('div');el.className
 
 // ─── Crawl Modal (비밀번호 인증) ───
 const CRAWL_PASSWORD = '1124';
-const _t=['gh','p_wC','3Xk6','2PYl','2sT8','RqWr','inCP','H1Rc','1thx','317p','Xz'];
-if(!localStorage.getItem('gh_token'))localStorage.setItem('gh_token',_t.join(''));
 function openCrawlModal() {
   const m = document.getElementById('crawlModal');
   document.getElementById('crawlPassword').value = '';
-  document.getElementById('tokenInput').value = localStorage.getItem('gh_token') || '';
   m.classList.add('active');
 }
 function closeCrawlModal() { document.getElementById('crawlModal').classList.remove('active'); }
 function submitCrawl() {
   const pw = document.getElementById('crawlPassword').value;
   if (pw !== CRAWL_PASSWORD) { showToast('비밀번호가 올바르지 않습니다.', 'error'); return; }
-  const token = document.getElementById('tokenInput').value.trim();
-  if (!token) { showToast('GitHub Token을 입력하세요.', 'error'); return; }
-  localStorage.setItem('gh_token', token);
   closeCrawlModal();
-  triggerCrawl(token);
+  triggerCrawl();
 }
-async function triggerCrawl(token){const btn=document.getElementById('btnCrawl'),sp=document.getElementById('crawlSpinner'),tx=document.getElementById('crawlText');btn.disabled=true;sp.style.display='inline-block';tx.textContent='실행 중...';try{const r=await fetch(`https://api.github.com/repos/${REPO}/actions/workflows/${WORKFLOW}/dispatches`,{method:'POST',headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github+json'},body:JSON.stringify({ref:'master'})});if(r.status===204){showToast('크롤링이 시작되었습니다! (약 25분 소요)','success');tx.textContent='크롤링 진행 중...';pollWorkflowStatus(token);}else{const b=await r.json().catch(()=>({}));showToast(`실행 실패: ${b.message||r.status}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}catch(e){showToast(`네트워크 오류: ${e.message}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}
-async function pollWorkflowStatus(token){const btn=document.getElementById('btnCrawl'),sp=document.getElementById('crawlSpinner'),tx=document.getElementById('crawlText');for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,15000));try{const r=await fetch(`https://api.github.com/repos/${REPO}/actions/runs?per_page=1&status=completed`,{headers:{'Authorization':`Bearer ${token}`,'Accept':'application/vnd.github+json'}});const d=await r.json();const l=d.workflow_runs?.[0];if(l){const a=(Date.now()-new Date(l.updated_at).getTime())/1000;if(a<60){const ok=l.conclusion==='success';showToast(ok?'크롤링 완료! 새로고침합니다.':'크롤링 완료 ('+l.conclusion+')',ok?'success':'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';if(ok)setTimeout(()=>location.reload(),2000);return;}}}catch{}}btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}
+const DISPATCH_URL = 'https://pkwbqbxuujpcvndpacsc.supabase.co/functions/v1/github-dispatch';
+async function triggerCrawl(){const btn=document.getElementById('btnCrawl'),sp=document.getElementById('crawlSpinner'),tx=document.getElementById('crawlText');btn.disabled=true;sp.style.display='inline-block';tx.textContent='실행 중...';try{const r=await fetch(DISPATCH_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({repo:REPO,workflow:WORKFLOW,ref:'master'})});const d=await r.json();if(d.success){showToast('크롤링이 시작되었습니다! (약 25분 소요)','success');tx.textContent='크롤링 진행 중...';pollWorkflowStatus();}else{showToast(`실행 실패: ${d.error||r.status}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}catch(e){showToast(`네트워크 오류: ${e.message}`,'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}}
+async function pollWorkflowStatus(){const btn=document.getElementById('btnCrawl'),sp=document.getElementById('crawlSpinner'),tx=document.getElementById('crawlText');for(let i=0;i<120;i++){await new Promise(r=>setTimeout(r,15000));try{const r=await fetch(`https://api.github.com/repos/${REPO}/actions/runs?per_page=1&status=completed`);const d=await r.json();const l=d.workflow_runs?.[0];if(l){const a=(Date.now()-new Date(l.updated_at).getTime())/1000;if(a<60){const ok=l.conclusion==='success';showToast(ok?'크롤링 완료! 새로고침합니다.':'크롤링 완료 ('+l.conclusion+')',ok?'success':'error');btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';if(ok)setTimeout(()=>location.reload(),2000);return;}}}catch{}}btn.disabled=false;sp.style.display='none';tx.textContent='수동 크롤링';}
 
 // ─── Helpers ───
 function esc(s){const d=document.createElement('div');d.textContent=s||'';return d.innerHTML;}
