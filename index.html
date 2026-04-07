@@ -81,8 +81,8 @@
   .ai-toggle { cursor: pointer; user-select: none; }
   .ai-toggle .arrow { display: inline-block; transition: transform .2s; font-size: 12px; }
   .ai-toggle.collapsed .arrow { transform: rotate(-90deg); }
-  .ai-body { overflow: hidden; transition: max-height .3s ease; }
-  .ai-body.collapsed { max-height: 0 !important; }
+  .ai-body { overflow: hidden; transition: max-height .4s ease; max-height: 5000px; }
+  .ai-body.collapsed { max-height: 0 !important; padding: 0; }
 
   /* ─── Checkbox Dropdown ─── */
   .filter-group { position: relative; }
@@ -345,10 +345,8 @@ ${sorted(keywords,15).map(([k,v])=>`- ${k}: ${v}회`).join('\n')}
       .replace(/\n{2,}/g, '</p><p>')
       .replace(/\n/g, '<br>')
     + '</div>';
-    // 펼치기
-    const body = document.getElementById('aiBody');
-    body.classList.remove('collapsed');
-    body.style.maxHeight = body.scrollHeight + 'px';
+    // 결과 로드 후 펼치기
+    document.getElementById('aiBody').classList.remove('collapsed');
     document.querySelector('.ai-toggle').classList.remove('collapsed');
   } catch (err) {
     box.innerHTML = `<div class="ai-placeholder" style="color:var(--red)">AI 분석 실패: ${esc(err.message)}</div>`;
@@ -362,15 +360,8 @@ ${sorted(keywords,15).map(([k,v])=>`- ${k}: ${v}회`).join('\n')}
 function toggleAi() {
   const t = document.querySelector('.ai-toggle');
   const b = document.getElementById('aiBody');
-  if (b.classList.contains('collapsed')) {
-    b.classList.remove('collapsed');
-    b.style.maxHeight = b.scrollHeight + 'px';
-    t.classList.remove('collapsed');
-  } else {
-    b.style.maxHeight = '0';
-    b.classList.add('collapsed');
-    t.classList.add('collapsed');
-  }
+  b.classList.toggle('collapsed');
+  t.classList.toggle('collapsed');
 }
 
 // ─── 추이보기 ───
@@ -470,7 +461,7 @@ function renderDashboard() {
     <!-- AI 분석 (접기/펼치기) -->
     <div class="ai-section">
       <h3 class="ai-toggle" onclick="toggleAi()"><span class="arrow">&#9660;</span> &#10024; AI 시장 분석</h3>
-      <div id="aiBody" class="ai-body" style="max-height:500px">
+      <div id="aiBody" class="ai-body">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <span style="font-size:12px;color:var(--muted)">Gemini AI가 현재 공고 분포를 분석하여 시장 소견을 제공합니다.</span>
           <button class="btn btn-ai" id="btnAi" onclick="runAiAnalysis()">&#10024; AI 분석</button>
