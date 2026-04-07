@@ -60,7 +60,8 @@
   .stat-card .num { font-size: 28px; font-weight: 700; color: var(--accent); }
   .stat-card .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .chart-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; margin-bottom: 24px; }
-  .chart-row--3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
+  .chart-row--3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; margin-bottom: 24px; }
+  .chart-row--3 .chart-box canvas { max-height: 260px !important; }
   .chart-box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
   .chart-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
   .chart-box canvas { max-height: 360px; }
@@ -481,9 +482,9 @@ function renderDashboard() {
     </div>
 
     <div class="chart-row--3">
-      <div class="chart-box"><h3>직군별 공고 분포</h3><canvas id="chartFields"></canvas></div>
-      <div class="chart-box"><h3>경력별 분포</h3><canvas id="chartExp"></canvas></div>
-      <div class="chart-box"><h3>고용형태 분포</h3><canvas id="chartType"></canvas></div>
+      <div class="chart-box"><h3>직군별 공고 분포</h3><div style="height:260px"><canvas id="chartFields"></canvas></div></div>
+      <div class="chart-box"><h3>경력별 분포</h3><div style="height:260px"><canvas id="chartExp"></canvas></div></div>
+      <div class="chart-box"><h3>고용형태 분포</h3><div style="height:260px"><canvas id="chartType"></canvas></div></div>
     </div>
     <div class="chart-row">
       <div class="chart-box"><h3>게임 장르 분포</h3><canvas id="chartCategory"></canvas></div>
@@ -500,15 +501,15 @@ function renderDashboard() {
 
   charts.fields = new Chart(document.getElementById('chartFields'), {
     type:'bar', data:{labels:topFields.map(e=>e[0]),datasets:[{data:topFields.map(e=>e[1]),backgroundColor:COLORS.slice(0,topFields.length),borderRadius:4}]},
-    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#21262d'}},y:{grid:{display:false}}}}
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#21262d'}},y:{grid:{display:false},ticks:{font:{size:10}}}}}
   });
   charts.exp = new Chart(document.getElementById('chartExp'), {
     type:'doughnut', data:{labels:topExps.map(e=>e[0]),datasets:[{data:topExps.map(e=>e[1]),backgroundColor:COLORS,borderWidth:0}]},
-    options:{responsive:true,plugins:{legend:{position:'right',labels:{boxWidth:12,padding:8,font:{size:11}}}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:6,font:{size:10}}}}}
   });
   charts.type = new Chart(document.getElementById('chartType'), {
     type:'doughnut', data:{labels:topTypes.map(e=>e[0]||'미기재'),datasets:[{data:topTypes.map(e=>e[1]),backgroundColor:COLORS.slice(2),borderWidth:0}]},
-    options:{responsive:true,plugins:{legend:{position:'right',labels:{boxWidth:12,padding:8,font:{size:11}}}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:10,padding:6,font:{size:10}}}}}
   });
   charts.category = new Chart(document.getElementById('chartCategory'), {
     type:'bar', data:{labels:topCategories.map(e=>e[0]),datasets:[{data:topCategories.map(e=>e[1]),backgroundColor:COLORS.slice(4),borderRadius:4}]},
