@@ -527,27 +527,27 @@ function renderDashboard() {
     return `<span class="kw-tag" style="font-size:${size}px;color:${COLORS[ci]};border-color:${COLORS[ci]}33">${esc(k)} <small style="opacity:.6">${v}</small></span>`;
   }).join('');
 
-  // ── 직군별 요구 기술 Top 5 (Stacked Bar) ──
+  // ── 직군별 요구 기술 Top 5 (Stacked Bar) — keywords 필드 사용 ──
   const roleSkillMap = {};
   const topRoleNames = topFields.slice(0,5).map(e=>e[0]);
+  // 회사명 등 노이즈 키워드 제외
+  const noiseKw = new Set(['지원','게임','신입','경력','채용','모집','정규직','계약직']);
   allJobs.forEach(j => {
-    if (!j.jobField) return;
-    j.jobField.split(/[,/]/).forEach(f => {
+    if (!j.jobField || !j.keywords) return;
+    const kws = j.keywords.split(',').map(s=>s.trim()).filter(s=>s.length>1 && s.length<15 && !noiseKw.has(s));
+    j.jobField.split(/[,\/]/).forEach(f => {
       const role = f.trim();
       if (!topRoleNames.includes(role)) return;
-      (Array.isArray(j.reqSkills) ? j.reqSkills : []).forEach(sk => {
+      kws.forEach(sk => {
         if (!roleSkillMap[role]) roleSkillMap[role] = {};
         roleSkillMap[role][sk] = (roleSkillMap[role][sk] || 0) + 1;
       });
     });
   });
-  // 상위 5개 기술만 추출
+  // 각 직군 상위 기술 추출 → 전체 라벨 집합
   const allSkillSet = new Set();
-  const roleTopSkills = {};
   topRoleNames.forEach(role => {
-    const sk = roleSkillMap[role] || {};
-    roleTopSkills[role] = sorted(sk, 5);
-    roleTopSkills[role].forEach(([s]) => allSkillSet.add(s));
+    sorted(roleSkillMap[role] || {}, 5).forEach(([s]) => allSkillSet.add(s));
   });
   const skillLabels = [...allSkillSet].slice(0, 12);
   const roleDatasets = topRoleNames.map((role, i) => ({
