@@ -557,11 +557,21 @@ function render() {
 // ─── Load ───
 async function loadData() {
   try {
-    const r = await fetch('./all-jobs.json');
-    if (!r.ok) throw new Error(r.status);
-    allJobs = await r.json();
+    const [jobsRes, idxRes] = await Promise.all([
+      fetch('./all-jobs.json'),
+      fetch('./data/history/index.txt').catch(() => null),
+    ]);
+    if (!jobsRes.ok) throw new Error(jobsRes.status);
+    allJobs = await jobsRes.json();
     if (!Array.isArray(allJobs)) allJobs = [];
-    document.getElementById('meta').textContent = `총 ${allJobs.length}건 | 마지막 업데이트: ${allJobs[0]?.updatedAt||'-'}`;
+
+    // 최신 크롤링 날짜 = 히스토리 인덱스의 마지막 항목
+    let latestDate = '-';
+    if (idxRes && idxRes.ok) {
+      const dates = (await idxRes.text()).trim().split('\n').filter(Boolean).sort();
+      if (dates.length > 0) latestDate = dates[dates.length - 1];
+    }
+    document.getElementById('meta').textContent = `총 ${allJobs.length}건 | 마지막 크롤링: ${latestDate}`;
     populateFilters(); render(); renderDashboard();
   } catch(e) {
     document.getElementById('content').innerHTML='<div class="empty"><h2>데이터 없음</h2><p>상단의 <b>수동 크롤링</b> 버튼을 눌러 시작하세요.</p></div>';
