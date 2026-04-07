@@ -59,7 +59,8 @@
   .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; text-align: center; }
   .stat-card .num { font-size: 28px; font-weight: 700; color: var(--accent); }
   .stat-card .label { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .chart-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .chart-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; margin-bottom: 24px; }
+  .chart-row--3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); }
   .chart-box { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 20px; }
   .chart-box h3 { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
   .chart-box canvas { max-height: 360px; }
@@ -319,7 +320,8 @@ ${sorted(keywords,15).map(([k,v])=>`- ${k}: ${v}회`).join('\n')}
 3. **경력 요구 트렌드** (신입 vs 경력, 시장의 진입장벽)
 4. **고용 안정성** (정규직 vs 계약직 비율이 의미하는 것)
 5. **주목할 키워드** (어떤 기술/역할이 떠오르는지)
-6. **구직자를 위한 제언** (2~3개 액션아이템)
+6. **신입 취업 추천 전략** (신입/주니어가 게임 업계에 진입하기 위한 구체적 전략 3~5개. 포트폴리오 구성, 추천 스킬셋, 지원 전략, 면접 준비 등)
+7. **구직자를 위한 제언** (2~3개 액션아이템)
 
 한국어로, 게임 업계 실무자 관점에서 구체적으로 작성해주세요.`;
 
@@ -478,13 +480,14 @@ function renderDashboard() {
       <div id="trendContent"><div class="ai-placeholder">추이보기 버튼을 눌러 날짜별 변화를 확인하세요.</div></div>
     </div>
 
-    <div class="chart-row">
+    <div class="chart-row--3">
       <div class="chart-box"><h3>직군별 공고 분포</h3><canvas id="chartFields"></canvas></div>
       <div class="chart-box"><h3>경력별 분포</h3><canvas id="chartExp"></canvas></div>
+      <div class="chart-box"><h3>고용형태 분포</h3><canvas id="chartType"></canvas></div>
     </div>
     <div class="chart-row">
-      <div class="chart-box"><h3>고용형태 분포</h3><canvas id="chartType"></canvas></div>
       <div class="chart-box"><h3>게임 장르 분포</h3><canvas id="chartCategory"></canvas></div>
+      <div class="chart-box"><h3>직군별 요구 기술 Top 5</h3><canvas id="chartSkillByRole"></canvas></div>
     </div>
     <div class="chart-row">
       <div class="chart-box chart-box--tall"><h3>채용 기업 Top 15</h3><canvas id="chartCompany"></canvas></div>
@@ -522,6 +525,46 @@ function renderDashboard() {
     const ci = Math.floor((v/maxKw)*11);
     return `<span class="kw-tag" style="font-size:${size}px;color:${COLORS[ci]};border-color:${COLORS[ci]}33">${esc(k)} <small style="opacity:.6">${v}</small></span>`;
   }).join('');
+
+  // ── 직군별 요구 기술 Top 5 (Stacked Bar) ──
+  const roleSkillMap = {};
+  const topRoleNames = topFields.slice(0,5).map(e=>e[0]);
+  allJobs.forEach(j => {
+    if (!j.jobField) return;
+    j.jobField.split(/[,/]/).forEach(f => {
+      const role = f.trim();
+      if (!topRoleNames.includes(role)) return;
+      (Array.isArray(j.reqSkills) ? j.reqSkills : []).forEach(sk => {
+        if (!roleSkillMap[role]) roleSkillMap[role] = {};
+        roleSkillMap[role][sk] = (roleSkillMap[role][sk] || 0) + 1;
+      });
+    });
+  });
+  // 상위 5개 기술만 추출
+  const allSkillSet = new Set();
+  const roleTopSkills = {};
+  topRoleNames.forEach(role => {
+    const sk = roleSkillMap[role] || {};
+    roleTopSkills[role] = sorted(sk, 5);
+    roleTopSkills[role].forEach(([s]) => allSkillSet.add(s));
+  });
+  const skillLabels = [...allSkillSet].slice(0, 12);
+  const roleDatasets = topRoleNames.map((role, i) => ({
+    label: role,
+    data: skillLabels.map(sk => (roleSkillMap[role] || {})[sk] || 0),
+    backgroundColor: COLORS[i],
+    borderRadius: 3,
+  }));
+
+  charts.skillByRole = new Chart(document.getElementById('chartSkillByRole'), {
+    type: 'bar',
+    data: { labels: skillLabels, datasets: roleDatasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 6, font: { size: 10 } } } },
+      scales: { x: { grid: { color: '#21262d' }, ticks: { font: { size: 9 }, maxRotation: 45 } }, y: { grid: { color: '#21262d' }, beginAtZero: true } },
+    },
+  });
 }
 
 // ─── List ───
