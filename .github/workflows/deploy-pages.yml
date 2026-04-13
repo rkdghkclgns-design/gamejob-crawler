@@ -1,0 +1,48 @@
+name: Deploy Pages (fast)
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'index.html'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare Pages site
+        run: |
+          mkdir -p _site/data/history
+          cp index.html _site/
+          if [ -f data/jobs/all-jobs.json ]; then
+            cp data/jobs/all-jobs.json _site/
+          else
+            echo "[]" > _site/all-jobs.json
+          fi
+          if ls data/history/*.json 1>/dev/null 2>&1; then
+            cp data/history/*.json _site/data/history/
+            ls -1 data/history/*.json | xargs -I{} basename {} .json | sort > _site/data/history/index.txt
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
