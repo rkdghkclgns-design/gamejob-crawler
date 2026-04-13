@@ -332,13 +332,14 @@ ${sorted(keywords,15).map(([k,v])=>`- ${k}: ${v}회`).join('\n')}
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'gemini-2.5-flash',
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7 },
+        content: prompt,
+        generationConfig: { temperature: 0.7, maxOutputTokens: 8192 },
       }),
     });
     const data = await res.json();
+    if (!res.ok) throw new Error(data.details || data.error || `서버 오류 ${res.status}`);
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('응답 파싱 실패');
+    if (!text) throw new Error('응답 파싱 실패: ' + JSON.stringify(data).substring(0, 200));
 
     box.innerHTML = '<div class="ai-result">' + text
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
