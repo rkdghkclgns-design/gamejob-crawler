@@ -29,10 +29,16 @@ jobs:
         run: |
           mkdir -p _site/data/history
           cp index.html _site/
-          if [ -f data/jobs/all-jobs.json ]; then
+          if [ -f data/jobs/all-jobs.json ] && [ "$(wc -c < data/jobs/all-jobs.json)" -gt 10 ]; then
             cp data/jobs/all-jobs.json _site/
           else
-            echo "[]" > _site/all-jobs.json
+            LATEST=$(ls -1 data/history/*.json 2>/dev/null | sort | tail -1)
+            if [ -n "$LATEST" ] && [ "$(wc -c < "$LATEST")" -gt 10 ]; then
+              echo "[INFO] 최신 히스토리 데이터 사용: $LATEST"
+              cp "$LATEST" _site/all-jobs.json
+            else
+              echo "[]" > _site/all-jobs.json
+            fi
           fi
           if ls data/history/*.json 1>/dev/null 2>&1; then
             cp data/history/*.json _site/data/history/

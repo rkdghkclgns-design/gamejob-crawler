@@ -80,10 +80,18 @@ jobs:
         run: |
           mkdir -p _site/data/history
           cp index.html _site/
-          if [ -f data/jobs/all-jobs.json ]; then
+          if [ -f data/jobs/all-jobs.json ] && [ "$(wc -c < data/jobs/all-jobs.json)" -gt 10 ]; then
             cp data/jobs/all-jobs.json _site/
           else
-            echo "[]" > _site/all-jobs.json
+            # 크롤링 실패 시 최신 히스토리 데이터를 사용
+            LATEST=$(ls -1 data/history/*.json 2>/dev/null | sort | tail -1)
+            if [ -n "$LATEST" ] && [ "$(wc -c < "$LATEST")" -gt 10 ]; then
+              echo "[INFO] 크롤링 실패 — 최신 히스토리 사용: $LATEST"
+              cp "$LATEST" _site/all-jobs.json
+            else
+              echo "[WARN] 사용 가능한 데이터 없음"
+              echo "[]" > _site/all-jobs.json
+            fi
           fi
           # 히스토리 데이터 복사
           if ls data/history/*.json 1>/dev/null 2>&1; then
