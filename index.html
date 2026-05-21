@@ -489,7 +489,7 @@ function renderDashboard() {
     </div>
     <div class="chart-row">
       <div class="chart-box"><h3>게임 장르 분포</h3><canvas id="chartCategory"></canvas></div>
-      <div class="chart-box"><h3>직군별 요구 기술 Top 5</h3><canvas id="chartSkillByRole"></canvas></div>
+      <div class="chart-box"><h3>직군별 요구 기술 Top 10</h3><div style="height:380px"><canvas id="chartSkillByRole"></canvas></div></div>
     </div>
     <div class="chart-row">
       <div class="chart-box chart-box--tall"><h3>채용 기업 Top 15</h3><canvas id="chartCompany"></canvas></div>
@@ -607,7 +607,7 @@ function renderDashboard() {
   };
 
   const roleSkillMap = {};
-  const topRoleNames = topFields.slice(0, 5).map(e => e[0]);
+  const topRoleNames = topFields.slice(0, 10).map(e => e[0]);
 
   allJobs.forEach(j => {
     if (!j.jobField) return;
@@ -656,8 +656,20 @@ function renderDashboard() {
     data: { labels: skillLabels, datasets: roleDatasets },
     options: {
       responsive: true,
-      plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 6, font: { size: 10 } } } },
-      scales: { x: { grid: { color: '#21262d' }, ticks: { font: { size: 9 }, maxRotation: 45 } }, y: { grid: { color: '#21262d' }, beginAtZero: true } },
+      maintainAspectRatio: false,
+      // 10개 시리즈 × 12개 스킬 = 막대가 좁아지므로 그룹 내 여백 최소화
+      datasets: { bar: { categoryPercentage: 0.95, barPercentage: 0.95 } },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { boxWidth: 10, padding: 6, font: { size: 10 } },
+        },
+        tooltip: { mode: 'index', intersect: false },
+      },
+      scales: {
+        x: { grid: { color: '#21262d' }, ticks: { font: { size: 10 }, maxRotation: 30, autoSkip: false } },
+        y: { grid: { color: '#21262d' }, beginAtZero: true },
+      },
     },
   });
 }
