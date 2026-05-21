@@ -538,7 +538,7 @@ function renderDashboard() {
         if (!elements.length) return;
         const idx = elements[0].index;
         const companyName = topCompanies[idx][0];
-        const url = `https://www.gamejob.co.kr/Recruit/_RecruitList?menucode=duty&keyword=${encodeURIComponent(companyName)}`;
+        const url = `https://www.gamejob.co.kr/Recruit/joblist?menucode=searchtot&searchtype=all&searchstring=${encodeURIComponent(companyName)}`;
         window.open(url, '_blank', 'noopener');
       },
       plugins: {
