@@ -517,8 +517,43 @@ function renderDashboard() {
     options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#21262d'}},y:{grid:{display:false}}}}
   });
   charts.company = new Chart(document.getElementById('chartCompany'), {
-    type:'bar', data:{labels:topCompanies.map(e=>e[0]),datasets:[{data:topCompanies.map(e=>e[1]),backgroundColor:'#58a6ff',borderRadius:4}]},
-    options:{indexAxis:'y',responsive:true,plugins:{legend:{display:false}},scales:{x:{grid:{color:'#21262d'}},y:{grid:{display:false},ticks:{font:{size:11}}}}}
+    type:'bar',
+    data:{
+      labels: topCompanies.map(e=>e[0]),
+      datasets:[{
+        data: topCompanies.map(e=>e[1]),
+        backgroundColor: '#58a6ff',
+        hoverBackgroundColor: '#79c0ff',
+        borderRadius: 4,
+      }]
+    },
+    options:{
+      indexAxis: 'y',
+      responsive: true,
+      onHover: (event, chartElement) => {
+        const target = event.native?.target || event.target;
+        if (target) target.style.cursor = chartElement.length ? 'pointer' : 'default';
+      },
+      onClick: (event, elements) => {
+        if (!elements.length) return;
+        const idx = elements[0].index;
+        const companyName = topCompanies[idx][0];
+        const url = `https://www.gamejob.co.kr/Recruit/_RecruitList?menucode=duty&keyword=${encodeURIComponent(companyName)}`;
+        window.open(url, '_blank', 'noopener');
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            footer: () => '클릭하여 게임잡에서 보기 ↗'
+          }
+        }
+      },
+      scales: {
+        x: { grid: { color: '#21262d' } },
+        y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+      }
+    }
   });
 
   const maxKw = topKeywords[0]?.[1] || 1;
