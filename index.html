@@ -563,29 +563,87 @@ function renderDashboard() {
     return `<span class="kw-tag" style="font-size:${size}px;color:${COLORS[ci]};border-color:${COLORS[ci]}33">${esc(k)} <small style="opacity:.6">${v}</small></span>`;
   }).join('');
 
-  // ── 직군별 요구 기술 Top 5 (Stacked Bar) — keywords 필드 사용 ──
+  // ── 직군별 요구 스킬 Top 5 — 큐레이션된 스킬 패턴을 keywords + description + title에서 탐색 ──
+  // 직군명(jobField)과 게임 카테고리/플랫폼은 스킬이 아니므로 제외하고, 실제 요구되는 도구/언어/소프트스킬만 추출
+  const SKILL_PATTERNS = {
+    // 게임 엔진
+    'Unity':            [/\bUnity\b/i, /유니티/],
+    'Unreal Engine':    [/Unreal/i, /언리얼/],
+    // 프로그래밍 언어
+    'C++':              [/C\+\+/],
+    'C#':               [/C#/],
+    'Python':           [/\bPython\b/i, /파이썬/],
+    'Java':             [/\bJava\b(?!Script)/],
+    'JavaScript':       [/JavaScript/i, /자바스크립트/, /\bTypeScript\b/i],
+    'Lua':              [/\bLua\b/i, /루아/],
+    // 그래픽 도구
+    'Photoshop':        [/Photoshop/i, /포토샵/],
+    'Maya':             [/\bMaya\b/i, /마야/],
+    '3ds Max':          [/3ds\s*max/i, /3DSMax/i],
+    'ZBrush':           [/ZBrush/i, /지브러시/],
+    'Substance':        [/Substance/i, /섭스턴스/],
+    'Blender':          [/Blender/i, /블렌더/],
+    'After Effects':    [/After\s*Effects/i, /애프터\s*이펙트/],
+    // 데이터/DB
+    'SQL/DB':           [/\bSQL\b/i, /데이터베이스/, /\bDB\b/, /MySQL/i],
+    // 협업 도구
+    'Git':              [/\bGit\b/i, /GitHub/i, /GitLab/i],
+    'JIRA':             [/\bJIRA\b/i, /\bJira\b/],
+    'Confluence':       [/Confluence/i, /컨플루언스/],
+    // 문서/소프트 스킬
+    '문서 작성':         [/문서\s*작성/, /기획서\s*작성/, /문서화/],
+    '커뮤니케이션':       [/커뮤니케이션/],
+    '협업':              [/협업/, /팀워크/, /\bteamwork/i],
+    '리더십':            [/리더십/, /리딩/],
+    '분석 능력':         [/분석\s*능력/, /데이터\s*분석/, /논리적/],
+    // 프로세스
+    'PM/PMO':           [/\bPM\b/, /ProjectManager/i, /프로젝트\s*매니저/, /프로젝트\s*관리/],
+    'Agile/Scrum':      [/Agile/i, /애자일/, /Scrum/i, /스크럼/],
+    // 기술 트렌드
+    'AI/ML':            [/\bAI\b/, /머신러닝/, /딥러닝/, /\bML\b/, /인공지능/],
+    'iOS/Android':      [/\biOS\b/, /\bAndroid\b/, /안드로이드/, /아이폰/],
+    'Shader':           [/Shader/i, /쉐이더/, /셰이더/],
+    'Animation':        [/Animation/i, /Rigging/i, /리깅/, /애니메이팅/],
+  };
+
   const roleSkillMap = {};
-  const topRoleNames = topFields.slice(0,5).map(e=>e[0]);
-  // 회사명 등 노이즈 키워드 제외
-  const noiseKw = new Set(['지원','게임','신입','경력','채용','모집','정규직','계약직']);
+  const topRoleNames = topFields.slice(0, 5).map(e => e[0]);
+
   allJobs.forEach(j => {
-    if (!j.jobField || !j.keywords) return;
-    const kws = j.keywords.split(',').map(s=>s.trim()).filter(s=>s.length>1 && s.length<15 && !noiseKw.has(s));
+    if (!j.jobField) return;
+    // keywords + description + title을 합쳐서 스킬 탐색 (description은 길어서 비용 큼 → 한 번만 합침)
+    const text = `${j.keywords || ''} ${j.description || ''} ${j.title || ''}`;
+
+    // 이 공고에서 등장하는 스킬 집합 추출 (중복 카운트 방지)
+    const detected = new Set();
+    for (const [skillName, patterns] of Object.entries(SKILL_PATTERNS)) {
+      if (patterns.some(p => p.test(text))) detected.add(skillName);
+    }
+    if (!detected.size) return;
+
+    // 공고가 속한 각 직군에 대해 스킬 카운트 증가
     j.jobField.split(/[,\/]/).forEach(f => {
       const role = f.trim();
       if (!topRoleNames.includes(role)) return;
-      kws.forEach(sk => {
-        if (!roleSkillMap[role]) roleSkillMap[role] = {};
+      if (!roleSkillMap[role]) roleSkillMap[role] = {};
+      detected.forEach(sk => {
         roleSkillMap[role][sk] = (roleSkillMap[role][sk] || 0) + 1;
       });
     });
   });
-  // 각 직군 상위 기술 추출 → 전체 라벨 집합
+
+  // 각 직군 상위 6개 스킬 → 전체 라벨 집합 (Set으로 중복 제거)
   const allSkillSet = new Set();
   topRoleNames.forEach(role => {
-    sorted(roleSkillMap[role] || {}, 5).forEach(([s]) => allSkillSet.add(s));
+    sorted(roleSkillMap[role] || {}, 6).forEach(([s]) => allSkillSet.add(s));
   });
-  const skillLabels = [...allSkillSet].slice(0, 12);
+  // 전체 공고 기준 빈도순으로 라벨 정렬해 가독성 향상
+  const overallSkillCount = {};
+  Object.values(roleSkillMap).forEach(m => Object.entries(m).forEach(([s, v]) => { overallSkillCount[s] = (overallSkillCount[s] || 0) + v; }));
+  const skillLabels = [...allSkillSet]
+    .sort((a, b) => (overallSkillCount[b] || 0) - (overallSkillCount[a] || 0))
+    .slice(0, 12);
+
   const roleDatasets = topRoleNames.map((role, i) => ({
     label: role,
     data: skillLabels.map(sk => (roleSkillMap[role] || {})[sk] || 0),
