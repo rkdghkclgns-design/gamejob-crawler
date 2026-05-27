@@ -117,6 +117,25 @@
   .empty h2 { font-size: 18px; margin-bottom: 8px; }
   .loading { text-align: center; padding: 80px; color: var(--muted); }
 
+  /* ─── 전일 대비 변화 탭 ─── */
+  .tab-badge { display: inline-block; background: var(--accent); color: #fff; font-size: 11px; padding: 1px 7px; border-radius: 10px; margin-left: 6px; font-weight: 700; min-width: 16px; text-align: center; }
+  .changes-meta { padding: 16px 32px; color: var(--muted); font-size: 13px; border-bottom: 1px solid var(--border); }
+  .changes-meta b { color: var(--text); }
+  .change-section { padding: 20px 32px 8px; }
+  .change-section h2 { font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; font-weight: 700; }
+  .change-section h2.new-h { color: var(--green); }
+  .change-section h2.upd-h { color: var(--yellow); }
+  .change-section h2 .cnt { font-size: 13px; padding: 2px 10px; border-radius: 10px; background: rgba(255,255,255,.06); color: var(--text); font-weight: 600; }
+  .change-badge { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 10px; font-weight: 700; margin-right: 6px; vertical-align: middle; }
+  .change-badge.new { background: rgba(63,185,80,.18); color: var(--green); border: 1px solid var(--green); }
+  .change-badge.upd { background: rgba(210,153,34,.18); color: var(--yellow); border: 1px solid var(--yellow); }
+  .diff-summary { font-size: 11px; color: var(--muted); margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border); line-height: 1.6; }
+  .diff-summary .diff-row { margin-bottom: 2px; }
+  .diff-summary .diff-field { color: var(--accent); font-weight: 600; margin-right: 4px; }
+  .diff-summary .diff-from { color: var(--red); text-decoration: line-through; opacity: .7; }
+  .diff-summary .diff-arrow { margin: 0 4px; color: var(--muted); }
+  .diff-summary .diff-to { color: var(--green); font-weight: 600; }
+
   @media (max-width: 700px) {
     .header { flex-direction: column; gap: 12px; padding: 16px; }
     .controls { padding: 12px 16px; }
@@ -156,8 +175,9 @@
 </div>
 
 <div class="tab-bar">
-  <button class="tab-btn active" onclick="switchTab('dashboard')">게임잡 공고 현황</button>
-  <button class="tab-btn" onclick="switchTab('list')">공고 목록</button>
+  <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">게임잡 공고 현황</button>
+  <button class="tab-btn" data-tab="list" onclick="switchTab('list')">공고 목록</button>
+  <button class="tab-btn" data-tab="changes" onclick="switchTab('changes')">전일 대비 변화<span class="tab-badge" id="changesBadge" style="display:none">0</span></button>
 </div>
 
 <!-- ─── TAB 1: 게임잡 공고 현황 ─── -->
@@ -192,19 +212,30 @@
   <div id="content" class="loading">로딩 중...</div>
 </div>
 
+<!-- ─── TAB 3: 전일 대비 변화 ─── -->
+<div id="tab-changes" class="tab-panel">
+  <div class="changes-meta" id="changesMeta">전일 대비 비교 데이터를 불러오는 중...</div>
+  <div id="changesContent" class="loading">로딩 중...</div>
+</div>
+
 <script>
 const REPO = 'rkdghkclgns-design/gamejob-crawler';
 const WORKFLOW = 'crawl.yml';
 const GEMINI_PROXY = 'https://pkwbqbxuujpcvndpacsc.supabase.co/functions/v1/gemini-proxy';
 const COLORS = ['#58a6ff','#3fb950','#d29922','#f85149','#bc8cff','#f778ba','#79c0ff','#56d4dd','#db6d28','#7ee787','#e3b341','#ff7b72'];
 let allJobs = [];
+let previousJobs = [];   // 전일 데이터
+let newJobs = [];        // 전일 대비 신규 공고
+let updatedJobs = [];    // 전일 대비 갱신된 공고
+let latestDate = '-';
+let previousDate = '-';
 let charts = {};
 let selectedFields = new Set();
 let selectedExps = new Set();
 
 // ─── Tab ───
 function switchTab(id) {
-  document.querySelectorAll('.tab-btn').forEach((b,i) => b.classList.toggle('active', (id==='dashboard'?0:1)===i));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-'+id).classList.add('active');
 }
@@ -690,6 +721,108 @@ function render() {
   ).join('') + '</div>';
 }
 
+// ─── 전일 대비 변화 비교 ───
+// updatedAt는 매일 자동 갱신되는 경향이 있어 노이즈 → 제외하고 실제 내용 변경만 갱신으로 판정
+const DIFF_FIELDS = ['title', 'company', 'jobField', 'experience', 'employmentType', 'deadline', 'keywords'];
+const DIFF_FIELD_LABELS = {
+  title: '제목', company: '기업', jobField: '직군',
+  experience: '경력', employmentType: '고용형태',
+  deadline: '마감', keywords: '키워드',
+};
+
+function computeChanges() {
+  // id 기준 맵 생성 (전일 데이터)
+  const prevMap = new Map();
+  previousJobs.forEach(j => { if (j && j.id) prevMap.set(j.id, j); });
+
+  newJobs = [];
+  updatedJobs = [];
+
+  allJobs.forEach(j => {
+    if (!j || !j.id) return;
+    const prev = prevMap.get(j.id);
+    if (!prev) {
+      // 신규: 전일에 없던 공고
+      newJobs.push(j);
+    } else {
+      // 갱신 판정: 비교 대상 필드 중 하나라도 변경된 경우
+      const diffs = [];
+      for (const f of DIFF_FIELDS) {
+        const a = (prev[f] || '').toString();
+        const b = (j[f] || '').toString();
+        if (a !== b) diffs.push({ field: f, from: a, to: b });
+      }
+      if (diffs.length > 0) updatedJobs.push(Object.assign({}, j, { _diffs: diffs }));
+    }
+  });
+
+  // updatedAt 내림차순 정렬
+  const byUpdatedDesc = (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '');
+  newJobs.sort(byUpdatedDesc);
+  updatedJobs.sort(byUpdatedDesc);
+}
+
+function renderChanges() {
+  const meta = document.getElementById('changesMeta');
+  const cont = document.getElementById('changesContent');
+
+  if (!allJobs.length) {
+    meta.textContent = '데이터를 불러오지 못했습니다.';
+    cont.innerHTML = '<div class="empty"><h2>데이터 없음</h2></div>';
+    return;
+  }
+  if (previousDate === '-' || previousDate === latestDate) {
+    meta.innerHTML = `기준 날짜: <b>${esc(latestDate)}</b> · 비교할 전일 데이터가 없습니다.`;
+    cont.innerHTML = '<div class="empty"><h2>비교 불가</h2><p>전일 대비 변화를 보려면 2일 이상의 크롤링 데이터가 필요합니다.</p></div>';
+    return;
+  }
+
+  meta.innerHTML = `비교: <b>${esc(previousDate)}</b> → <b>${esc(latestDate)}</b> &nbsp;|&nbsp; 신규 <b style="color:var(--green)">${newJobs.length}건</b> · 갱신 <b style="color:var(--yellow)">${updatedJobs.length}건</b>`;
+
+  const renderCard = (j, badgeHtml) => `
+    <a class="card" href="${j.link||'#'}" target="_blank" rel="noopener">
+      <div class="card-title">${badgeHtml}${esc(j.title)}</div>
+      <div class="card-company">${esc(j.company)}</div>
+      <div class="card-tags">
+        ${j.jobField?`<span class="tag field">${esc(j.jobField)}</span>`:''}
+        ${j.experience?`<span class="tag exp">${esc(j.experience)}</span>`:''}
+        ${j.employmentType?`<span class="tag type">${esc(j.employmentType)}</span>`:''}
+      </div>
+      ${j._diffs && j._diffs.length ? `<div class="diff-summary">${j._diffs.map(d => {
+        const label = esc(DIFF_FIELD_LABELS[d.field] || d.field);
+        const from = esc((d.from || '(없음)').substring(0, 80));
+        const to = esc((d.to || '(없음)').substring(0, 80));
+        return `<div class="diff-row"><span class="diff-field">${label}</span><span class="diff-from">${from}</span><span class="diff-arrow">→</span><span class="diff-to">${to}</span></div>`;
+      }).join('')}</div>` : ''}
+      <div class="card-bottom"><span>${esc(j.updatedAt||'')}</span><span class="deadline">${esc(j.deadline||'')}</span></div>
+    </a>`;
+
+  const newGrid = newJobs.length
+    ? `<div class="grid" style="padding:0 32px 16px">${newJobs.map(j => renderCard(j, '<span class="change-badge new">NEW</span>')).join('')}</div>`
+    : '<div class="empty" style="padding:30px"><p>신규 공고가 없습니다.</p></div>';
+  const updGrid = updatedJobs.length
+    ? `<div class="grid" style="padding:0 32px 16px">${updatedJobs.map(j => renderCard(j, '<span class="change-badge upd">UPDATED</span>')).join('')}</div>`
+    : '<div class="empty" style="padding:30px"><p>갱신된 공고가 없습니다.</p></div>';
+
+  cont.innerHTML = `
+    <div class="change-section"><h2 class="new-h">📌 신규 공고 <span class="cnt">${newJobs.length}건</span></h2></div>
+    ${newGrid}
+    <div class="change-section"><h2 class="upd-h">🔄 갱신된 공고 <span class="cnt">${updatedJobs.length}건</span></h2></div>
+    ${updGrid}
+  `;
+}
+
+function updateChangesBadge() {
+  const total = newJobs.length + updatedJobs.length;
+  const badge = document.getElementById('changesBadge');
+  if (total > 0) {
+    badge.textContent = total > 999 ? '999+' : total;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
 // ─── Load ───
 async function loadData() {
   try {
@@ -701,17 +834,32 @@ async function loadData() {
     allJobs = await jobsRes.json();
     if (!Array.isArray(allJobs)) allJobs = [];
 
-    // 최신 크롤링 날짜 = 히스토리 인덱스의 마지막 항목
-    let latestDate = '-';
+    // 최신 + 직전 크롤링 날짜 추출
     if (idxRes && idxRes.ok) {
       const dates = (await idxRes.text()).trim().split('\n').filter(Boolean).sort();
       if (dates.length > 0) latestDate = dates[dates.length - 1];
+      if (dates.length > 1) previousDate = dates[dates.length - 2];
     }
     document.getElementById('meta').textContent = `총 ${allJobs.length}건 | 마지막 크롤링: ${latestDate}`;
     populateFilters(); render(); renderDashboard();
+
+    // 전일 데이터 로드 → 비교 → 신규/갱신 탭 렌더
+    if (previousDate !== '-' && previousDate !== latestDate) {
+      try {
+        const prevRes = await fetch(`./data/history/${previousDate}.json`);
+        if (prevRes.ok) {
+          previousJobs = await prevRes.json();
+          if (!Array.isArray(previousJobs)) previousJobs = [];
+          computeChanges();
+          updateChangesBadge();
+        }
+      } catch (e) { console.warn('전일 데이터 로드 실패:', e); }
+    }
+    renderChanges();
   } catch(e) {
     document.getElementById('content').innerHTML='<div class="empty"><h2>데이터 없음</h2><p>상단의 <b>수동 크롤링</b> 버튼을 눌러 시작하세요.</p></div>';
     document.getElementById('dashContent').innerHTML='<div class="empty"><h2>데이터 없음</h2></div>';
+    document.getElementById('changesContent').innerHTML='<div class="empty"><h2>데이터 없음</h2></div>';
     document.getElementById('meta').textContent='데이터를 불러올 수 없습니다';
   }
 }
