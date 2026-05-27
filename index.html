@@ -136,6 +136,16 @@
   .diff-summary .diff-arrow { margin: 0 4px; color: var(--muted); }
   .diff-summary .diff-to { color: var(--green); font-weight: 600; }
 
+  /* ─── 마감 임박 탭 ─── */
+  .dday-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; margin-right: 6px; vertical-align: middle; letter-spacing: .3px; }
+  .dday-badge.urgent { background: var(--red); color: #fff; animation: pulse 1.8s ease-in-out infinite; }
+  .dday-badge.soon { background: var(--yellow); color: #1a1a1a; }
+  .dday-badge.near { background: var(--accent); color: #fff; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+  .deadline-section { padding: 20px 32px 8px; }
+  .deadline-section h2 { font-size: 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--red); }
+  .deadline-section h2 .cnt { font-size: 13px; padding: 2px 10px; border-radius: 10px; background: rgba(255,255,255,.06); color: var(--text); font-weight: 600; }
+
   @media (max-width: 700px) {
     .header { flex-direction: column; gap: 12px; padding: 16px; }
     .controls { padding: 12px 16px; }
@@ -178,6 +188,7 @@
   <button class="tab-btn active" data-tab="dashboard" onclick="switchTab('dashboard')">게임잡 공고 현황</button>
   <button class="tab-btn" data-tab="list" onclick="switchTab('list')">공고 목록</button>
   <button class="tab-btn" data-tab="changes" onclick="switchTab('changes')">전일 대비 변화<span class="tab-badge" id="changesBadge" style="display:none">0</span></button>
+  <button class="tab-btn" data-tab="deadline" onclick="switchTab('deadline')">마감 임박 공고<span class="tab-badge" id="deadlineBadge" style="display:none;background:var(--red)">0</span></button>
 </div>
 
 <!-- ─── TAB 1: 게임잡 공고 현황 ─── -->
@@ -218,6 +229,32 @@
   <div id="changesContent" class="loading">로딩 중...</div>
 </div>
 
+<!-- ─── TAB 4: 마감 임박 공고 ─── -->
+<div id="tab-deadline" class="tab-panel">
+  <div class="controls">
+    <input type="text" id="searchDeadline" placeholder="공고 제목, 회사명, 키워드 검색...">
+    <div class="filter-group" id="fieldFilterGroupD">
+      <div class="filter-toggle" onclick="toggleDropdown('fieldDropD')">
+        <span id="fieldLabelD">전체 직군</span>
+        <span class="filter-count" id="fieldCountD" style="display:none"></span>
+        <span style="font-size:10px">&#9660;</span>
+      </div>
+      <div class="filter-dropdown" id="fieldDropD"></div>
+    </div>
+    <div class="filter-group" id="expFilterGroupD">
+      <div class="filter-toggle" onclick="toggleDropdown('expDropD')">
+        <span id="expLabelD">전체 경력</span>
+        <span class="filter-count" id="expCountD" style="display:none"></span>
+        <span style="font-size:10px">&#9660;</span>
+      </div>
+      <div class="filter-dropdown" id="expDropD"></div>
+    </div>
+    <span class="badge" id="countDeadline">-</span>
+  </div>
+  <div class="changes-meta" id="deadlineMeta" style="border-top:0">마감 10일 이내 공고를 확인합니다.</div>
+  <div id="deadlineContent" class="loading">로딩 중...</div>
+</div>
+
 <script>
 const REPO = 'rkdghkclgns-design/gamejob-crawler';
 const WORKFLOW = 'crawl.yml';
@@ -232,6 +269,10 @@ let previousDate = '-';
 let charts = {};
 let selectedFields = new Set();
 let selectedExps = new Set();
+// 마감 임박 탭의 독립적인 필터 상태
+let selectedFieldsD = new Set();
+let selectedExpsD = new Set();
+const DEADLINE_WINDOW = 10;  // 마감 임박 기준 (일)
 
 // ─── Tab ───
 function switchTab(id) {
@@ -721,6 +762,157 @@ function render() {
   ).join('') + '</div>';
 }
 
+// ─── 마감 임박 ───
+// "~ MM/DD(요일)" 형식의 deadline 문자열에서 Date 객체 추출. 실패 시 null.
+function parseDeadline(s, refDate) {
+  if (!s) return null;
+  const m = String(s).match(/(\d{1,2})\/(\d{1,2})/);
+  if (!m) return null;
+  const mo = parseInt(m[1], 10);
+  const da = parseInt(m[2], 10);
+  if (mo < 1 || mo > 12 || da < 1 || da > 31) return null;
+  const refYear = refDate.getFullYear();
+  const refMonth = refDate.getMonth() + 1;
+  // 월이 기준일 이전이면 내년으로 추론
+  const year = mo >= refMonth ? refYear : refYear + 1;
+  const d = new Date(year, mo - 1, da);
+  if (isNaN(d.getTime())) return null;
+  return d;
+}
+
+// D-day 계산 (양수=남은 일수, 0=오늘, 음수=지남)
+function daysLeft(deadlineStr, refDate) {
+  const d = parseDeadline(deadlineStr, refDate);
+  if (!d) return null;
+  const ref0 = new Date(refDate.getFullYear(), refDate.getMonth(), refDate.getDate());
+  return Math.round((d - ref0) / 86400000);
+}
+
+// latestDate(YYYY-MM-DD) → Date 객체. 파싱 실패 시 오늘 날짜.
+function getLatestDateObj() {
+  if (latestDate && latestDate !== '-') {
+    const m = latestDate.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  }
+  return new Date();
+}
+
+// D-day 뱃지 HTML
+function ddayBadge(d) {
+  let cls = 'near';
+  if (d <= 3) cls = 'urgent';
+  else if (d <= 7) cls = 'soon';
+  const label = d === 0 ? 'D-DAY' : (d > 0 ? `D-${d}` : `D+${-d}`);
+  return `<span class="dday-badge ${cls}">${label}</span>`;
+}
+
+function populateDeadlineFilters() {
+  // 마감 10일 이내 공고만 대상으로 필터 옵션 추출
+  const ref = getLatestDateObj();
+  const targets = allJobs.filter(j => {
+    const d = daysLeft(j.deadline, ref);
+    return d !== null && d >= 0 && d <= DEADLINE_WINDOW;
+  });
+
+  const fields = new Set(), exps = new Set();
+  targets.forEach(j => {
+    if (j.jobField) j.jobField.split(/[,/]/).forEach(f => { const t = f.trim(); if (t) fields.add(t); });
+    if (j.experience) exps.add(j.experience.trim());
+  });
+
+  document.getElementById('fieldDropD').innerHTML = [...fields].sort().map(f =>
+    `<label><input type="checkbox" value="${esc(f)}" onchange="onFieldCheckD()"> ${esc(f)}</label>`
+  ).join('') || '<div style="padding:10px;color:var(--muted);font-size:12px">옵션 없음</div>';
+
+  document.getElementById('expDropD').innerHTML = [...exps].sort().map(e =>
+    `<label><input type="checkbox" value="${esc(e)}" onchange="onExpCheckD()"> ${esc(e)}</label>`
+  ).join('') || '<div style="padding:10px;color:var(--muted);font-size:12px">옵션 없음</div>';
+}
+
+function onFieldCheckD() {
+  selectedFieldsD = new Set([...document.querySelectorAll('#fieldDropD input:checked')].map(c => c.value));
+  const cnt = selectedFieldsD.size;
+  document.getElementById('fieldLabelD').textContent = cnt ? `직군 ${cnt}개` : '전체 직군';
+  document.getElementById('fieldCountD').textContent = cnt;
+  document.getElementById('fieldCountD').style.display = cnt ? 'inline' : 'none';
+  renderDeadline();
+}
+function onExpCheckD() {
+  selectedExpsD = new Set([...document.querySelectorAll('#expDropD input:checked')].map(c => c.value));
+  const cnt = selectedExpsD.size;
+  document.getElementById('expLabelD').textContent = cnt ? `경력 ${cnt}개` : '전체 경력';
+  document.getElementById('expCountD').textContent = cnt;
+  document.getElementById('expCountD').style.display = cnt ? 'inline' : 'none';
+  renderDeadline();
+}
+
+function updateDeadlineBadge() {
+  const ref = getLatestDateObj();
+  const n = allJobs.filter(j => {
+    const d = daysLeft(j.deadline, ref);
+    return d !== null && d >= 0 && d <= DEADLINE_WINDOW;
+  }).length;
+  const badge = document.getElementById('deadlineBadge');
+  if (n > 0) {
+    badge.textContent = n > 999 ? '999+' : n;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function renderDeadline() {
+  const cont = document.getElementById('deadlineContent');
+  const meta = document.getElementById('deadlineMeta');
+  const countEl = document.getElementById('countDeadline');
+  const q = (document.getElementById('searchDeadline').value || '').toLowerCase();
+
+  const ref = getLatestDateObj();
+  // 1차: 10일 이내 마감만
+  const inWindow = [];
+  for (const j of allJobs) {
+    const d = daysLeft(j.deadline, ref);
+    if (d === null || d < 0 || d > DEADLINE_WINDOW) continue;
+    inWindow.push({ daysLeft: d, job: j });
+  }
+  inWindow.sort((a, b) => a.daysLeft - b.daysLeft);
+
+  // 2차: 검색 + 필터
+  const filtered = inWindow.filter(({ job: j }) => {
+    if (q) {
+      const h = `${j.title} ${j.company} ${j.keywords||''} ${j.jobField||''} ${j.description||''}`.toLowerCase();
+      if (!h.includes(q)) return false;
+    }
+    if (selectedFieldsD.size > 0 && (!j.jobField || ![...selectedFieldsD].some(f => j.jobField.includes(f)))) return false;
+    if (selectedExpsD.size > 0 && !selectedExpsD.has(j.experience)) return false;
+    return true;
+  });
+
+  meta.innerHTML = `기준일: <b>${esc(latestDate)}</b> &nbsp;|&nbsp; 마감 ${DEADLINE_WINDOW}일 이내 전체 <b>${inWindow.length}건</b> · 필터 결과 <b style="color:var(--red)">${filtered.length}건</b>`;
+  countEl.textContent = `${filtered.length}건`;
+
+  if (!filtered.length) {
+    cont.innerHTML = inWindow.length
+      ? '<div class="empty"><h2>필터 결과 없음</h2><p>검색어/필터를 변경해보세요.</p></div>'
+      : `<div class="empty"><h2>마감 임박 공고 없음</h2><p>마감 ${DEADLINE_WINDOW}일 이내의 공고가 없습니다.</p></div>`;
+    return;
+  }
+
+  cont.innerHTML = '<div class="grid">' + filtered.map(({ daysLeft: d, job: j }) =>
+    `<a class="card" href="${j.link||'#'}" target="_blank" rel="noopener">
+       <div class="card-title">${ddayBadge(d)}${esc(j.title)}</div>
+       <div class="card-company">${esc(j.company)}</div>
+       <div class="card-tags">
+         ${j.jobField?`<span class="tag field">${esc(j.jobField)}</span>`:''}
+         ${j.experience?`<span class="tag exp">${esc(j.experience)}</span>`:''}
+         ${j.employmentType?`<span class="tag type">${esc(j.employmentType)}</span>`:''}
+       </div>
+       ${j.keywords?`<div class="card-tags">${j.keywords.split(',').slice(0,5).map(k=>`<span class="tag">${esc(k.trim())}</span>`).join('')}</div>`:''}
+       <div class="card-bottom"><span>${esc(j.updatedAt||'')}</span><span class="deadline">${esc(j.deadline||'')}</span></div>
+     </a>`
+  ).join('') + '</div>';
+}
+
 // ─── 전일 대비 변화 비교 ───
 // updatedAt는 매일 자동 갱신되는 경향이 있어 노이즈 → 제외하고 실제 내용 변경만 갱신으로 판정
 const DIFF_FIELDS = ['title', 'company', 'jobField', 'experience', 'employmentType', 'deadline', 'keywords'];
@@ -843,6 +1035,11 @@ async function loadData() {
     document.getElementById('meta').textContent = `총 ${allJobs.length}건 | 마지막 크롤링: ${latestDate}`;
     populateFilters(); render(); renderDashboard();
 
+    // 마감 임박 탭 초기화
+    populateDeadlineFilters();
+    updateDeadlineBadge();
+    renderDeadline();
+
     // 전일 데이터 로드 → 비교 → 신규/갱신 탭 렌더
     if (previousDate !== '-' && previousDate !== latestDate) {
       try {
@@ -860,11 +1057,13 @@ async function loadData() {
     document.getElementById('content').innerHTML='<div class="empty"><h2>데이터 없음</h2><p>상단의 <b>수동 크롤링</b> 버튼을 눌러 시작하세요.</p></div>';
     document.getElementById('dashContent').innerHTML='<div class="empty"><h2>데이터 없음</h2></div>';
     document.getElementById('changesContent').innerHTML='<div class="empty"><h2>데이터 없음</h2></div>';
+    document.getElementById('deadlineContent').innerHTML='<div class="empty"><h2>데이터 없음</h2></div>';
     document.getElementById('meta').textContent='데이터를 불러올 수 없습니다';
   }
 }
 
 document.getElementById('search').addEventListener('input', render);
+document.getElementById('searchDeadline').addEventListener('input', renderDeadline);
 loadData();
 </script>
 </body>
